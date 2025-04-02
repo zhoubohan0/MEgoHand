@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from pprint import pprint
 from gr00t.data.dataset import LeRobotSingleDataset
-from gr00t.model.policy import Gr00tPolicy
+from gr00t.model.policy import MHMPolicy
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.utils.util import glance_dict
 # basic config
@@ -11,13 +11,12 @@ EMBODIMENT_TAG = "gr1"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # model
-data_config = DATA_CONFIG_MAP["gr1_arms_only"]
+data_config = DATA_CONFIG_MAP["hand_motion"]
 modality_config = data_config.modality_config()
 glance_dict(modality_config)
 modality_transform = data_config.transform()
-MODEL_PATH = "GR00T-N1-2B"
-policy = Gr00tPolicy(
-    model_path=MODEL_PATH,
+policy = MHMPolicy(
+    model_cfg_path='model_config',
     embodiment_tag=EMBODIMENT_TAG,
     modality_config=modality_config,
     modality_transform=modality_transform,
@@ -25,6 +24,7 @@ policy = Gr00tPolicy(
 )
 print(policy.model)
 
+'''
 # dataset
 DATASET_PATH = os.path.join("demo_data/robot_sim.PickNPlace")
 dataset = LeRobotSingleDataset(
@@ -38,6 +38,8 @@ dataset = LeRobotSingleDataset(
 step_data = dataset[0]
 print("\n\n ====================================")
 glance_dict(step_data)
+'''
+
 '''
 # visualize data sample        
 import matplotlib.pyplot as plt
@@ -90,6 +92,16 @@ for i, ax in enumerate(axes):
     ax.imshow(images[i])
     ax.axis("off")
 '''    
+step_data = dict()
+step_data["video.ego_view"] = np.zeros((1,256,256,3), dtype=np.uint8)
+step_data["state.theta"] =  np.zeros((1,90), dtype=np.float32)
+step_data["state.beta"] = np.zeros((1,10), dtype=np.float32)
+step_data["state.rot"] = np.zeros((1, 6), dtype=np.float32)
+step_data["state.trans"] = np.zeros((1, 3), dtype=np.float32)
+step_data["action.theta"] = np.zeros((16,90), dtype=np.float32)
+step_data["action.rot"] = np.zeros((16, 6), dtype=np.float32)
+step_data["action.trans"] = np.zeros((16, 3), dtype=np.float32)
+step_data['annotation.human.action.task_description'] = ['pick the squash from the counter and place it in the plate']
 predicted_action = policy.get_action(step_data)
 glance_dict(predicted_action)
 breakpoint()

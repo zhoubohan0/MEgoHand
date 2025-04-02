@@ -496,10 +496,7 @@ def get_embeddings(
 ) -> torch.LongTensor:
     assert self.img_context_token_id is not None
     assert pixel_values is not None
-    if visual_features is not None:
-        vit_embeds = visual_features
-    else:
-        vit_embeds = self.extract_feature(pixel_values)
+    vit_embeds = self.extract_feature(pixel_values) if visual_features is None else visual_features
 
     input_embeds = self.language_model.get_input_embeddings()(input_ids)
     B, N, C = input_embeds.shape

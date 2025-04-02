@@ -1,0 +1,63 @@
+{
+  "action_dim": 99,
+  "action_head_cfg": {
+    "action_dim": 99,
+    "action_horizon": 16,
+    "add_pos_embed": true,
+    "diffusion_model_cfg": {
+      "attention_head_dim": 48,
+      "dropout": 0.2,
+      "final_dropout": true,
+      "interleave_self_attention": true,
+      "norm_type": "ada_norm",
+      "num_attention_heads": 32,
+      "num_layers": 16,
+      "output_dim": 1024,
+      "positional_embeddings": null
+    },
+    "freeze_decode_layer": false,
+    "hidden_size": 1024,
+    "input_embedding_dim": 1536,
+    "load_pretrained_det_decode_layer_path": null,
+    "max_action_dim": 99,
+    "max_state_dim": 109,
+    "model_dtype": "float32",
+    "noise_beta_alpha": 1.5,
+    "noise_beta_beta": 1.0,
+    "noise_s": 0.999,
+    "num_inference_timesteps": 16,
+    "num_timestep_buckets": 1000,
+    "tune_diffusion_model": true,
+    "tune_projector": true
+  },
+  "action_horizon": 16,
+  "architectures": [
+    "GR00T_N1"
+  ],
+  "attn_implementation": null,
+  "backbone_cfg": {
+    "allow_reshape_visual": true,
+    "load_pretrained_det_eagle_path": null,
+    "model_name": "$GR00T_BACKBONE_PATH/eagle2_hg_model",
+    "processor_cfg": {
+      "max_input_tiles": 1,
+      "model_path": "$GR00T_BACKBONE_PATH/eagle2_hg_model",
+      "model_spec": {
+        "num_image_token": 64,
+        "template": "qwen2-chat"
+      }
+    },
+    "projector_dim": 2048,
+    "remove_llm": false,
+    "reproject_vision": false,
+    "scale_image_resolution": 1,
+    "select_layer": 12,
+    "tune_llm": false,
+    "tune_visual": true
+  },
+  "hidden_size": 1536,
+  "model_dtype": "float32",
+  "model_type": "gr00t_n1",
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.45.2"
+}

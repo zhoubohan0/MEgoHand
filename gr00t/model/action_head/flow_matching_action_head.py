@@ -135,40 +135,78 @@ class MultiEmbodimentActionEncoder(nn.Module):
         return x
 
 
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.layer1 = nn.Linear(input_dim, hidden_dim)
+        self.layer2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        hidden = F.relu(self.layer1(x))
+        return self.layer2(hidden)
+
+class ActionEncoder(nn.Module):
+    def __init__(self, action_dim, hidden_size):
+        super().__init__()
+        self.hidden_size = hidden_size
+
+        self.W1 = MLP(action_dim, hidden_size, hidden_size)  # (d -> w)
+        self.W2 = MLP(2 * hidden_size, hidden_size, hidden_size)  # (2w -> w)
+        self.W3 = MLP(hidden_size, hidden_size, hidden_size)  # (w -> w)
+        self.pos_encoding = SinusoidalPositionalEncoding(hidden_size)
+
+    def forward(self, actions, timesteps):
+        """
+        actions:   shape (B, T, action_dim)
+        timesteps: shape (B,)  -- a single scalar per batch item
+        returns:   shape (B, T, hidden_size)
+        """
+        B, T, _ = actions.shape
+
+        # 1) Expand each batch's single scalar time 'tau' across all T steps
+        #    so that shape => (B, T)
+        #    e.g. if timesteps is (B,), replicate across T
+        if timesteps.dim() == 1 and timesteps.shape[0] == B:
+            # shape (B,) => (B,T)
+            timesteps = timesteps.unsqueeze(1).expand(-1, T)
+        else:
+            raise ValueError(
+                "Expected `timesteps` to have shape (B,) so we can replicate across T."
+            )
+
+        # 2) Standard action MLP step for shape => (B, T, w)
+        a_emb = self.W1(actions)
+
+        # 3) Get the sinusoidal encoding (B, T, w)
+        tau_emb = self.pos_encoding(timesteps).to(dtype=a_emb.dtype)
+
+        # 4) Concat along last dim => (B, T, 2w), then W2 => (B, T, w), swish
+        x = torch.cat([a_emb, tau_emb], dim=-1)
+        x = swish(self.W2(x))
+
+        # 5) Finally W3 => (B, T, w)
+        x = self.W3(x)
+        return x
+
+
 @dataclass
 class FlowmatchingActionHeadConfig(PretrainedConfig):
-    add_pos_embed: bool = field(
-        default=True, metadata={"help": "Whether to add positional embedding"}
-    )
+    add_pos_embed: bool = field(default=True, metadata={"help": "Whether to add positional embedding"})
     model_dtype: str = field(default="float32", metadata={"help": "Model data type."})
-    diffusion_model_cfg: dict = field(
-        default=None, metadata={"help": "Diffusion model configuration."}
-    )
-    input_embedding_dim: int = field(
-        default=1536, metadata={"help": "Input embedding channel dimension."}
-    )
-
+    diffusion_model_cfg: dict = field(default=None, metadata={"help": "Diffusion model configuration."})
+    input_embedding_dim: int = field(default=1536, metadata={"help": "Input embedding channel dimension."})
     hidden_size: int = field(default=1024, metadata={"help": "Input embedding dimension."})
     max_seq_len: int = field(default=1024, metadata={"help": "Maxium Sequence Length"})
     action_dim: int = field(default=None, metadata={"help": "Action dimension."})
     action_horizon: int = field(default=None, metadata={"help": "Action horizon."})
     noise_beta_alpha: float = field(default=1.5, metadata={"help": ""})
     noise_beta_beta: float = field(default=1.0, metadata={"help": ""})
-    noise_s: float = field(
-        default=0.999, metadata={"help": "Flow matching noise Beta distribution s."}
-    )
-    num_timestep_buckets: int = field(
-        default=1000, metadata={"help": "Number of timestep discretization buckets."}
-    )
-    num_inference_timesteps: int = field(
-        default=None,
-        metadata={"help": "Number of inference steps for noise diffusion."},
-    )
+    noise_s: float = field(default=0.999, metadata={"help": "Flow matching noise Beta distribution s."})
+    num_timestep_buckets: int = field(default=1000, metadata={"help": "Number of timestep discretization buckets."})
+    num_inference_timesteps: int = field(default=None,metadata={"help": "Number of inference steps for noise diffusion."},)
     max_num_embodiments: int = field(default=32, metadata={"help": "Number of embodiments."})
     tune_projector: bool = field(default=True, metadata={"help": "Whether to tune the projector."})
-    tune_diffusion_model: bool = field(
-        default=True, metadata={"help": "Whether to tune the diffusion model."}
-    )
+    tune_diffusion_model: bool = field(default=True, metadata={"help": "Whether to tune the diffusion model."})
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -192,19 +230,16 @@ class FlowmatchingActionHead(nn.Module):
         self.action_dim = config.action_dim
         self.action_horizon = config.action_horizon
         self.num_inference_timesteps = config.num_inference_timesteps  # diffusion step
-        self.state_encoder = CategorySpecificMLP(
-            num_categories=config.max_num_embodiments,
+        self.state_encoder = MLP(
             input_dim=config.max_state_dim,
             hidden_dim=self.hidden_size,
             output_dim=self.input_embedding_dim,
         )
-        self.action_encoder = MultiEmbodimentActionEncoder(
+        self.action_encoder = ActionEncoder(
             action_dim=config.action_dim,
             hidden_size=self.input_embedding_dim,
-            num_embodiments=config.max_num_embodiments,
         )
-        self.action_decoder = CategorySpecificMLP(
-            num_categories=config.max_num_embodiments,
+        self.action_decoder = MLP(
             input_dim=self.hidden_size,
             hidden_dim=self.hidden_size,
             output_dim=self.action_dim,
@@ -267,16 +302,12 @@ class FlowmatchingActionHead(nn.Module):
         # Set frozen modules to eval
         self.set_frozen_modules_to_eval_mode()
 
-        # Get vision and language embeddings.
+        # vision and language embeddings
         vl_embeds = backbone_output.backbone_features
-        device = vl_embeds.device
-
-        # Get embodiment ID.
-        embodiment_id = action_input.embodiment_id
 
         # Embed state.
-        state_features = self.state_encoder(action_input.state, embodiment_id)
-
+        state_features = self.state_encoder(action_input.state)
+        breakpoint()
         # Embed noised action trajectory.
         actions = action_input.action
         noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
@@ -288,26 +319,25 @@ class FlowmatchingActionHead(nn.Module):
 
         # Convert (continuous) t -> discrete if needed
         t_discretized = (t[:, 0, 0] * self.num_timestep_buckets).long()
-        action_features = self.action_encoder(noisy_trajectory, t_discretized, embodiment_id)
+        action_features = self.action_encoder(noisy_trajectory, t_discretized)
 
         # Maybe add position embedding.
         if self.config.add_pos_embed:
-            pos_ids = torch.arange(action_features.shape[1], dtype=torch.long, device=device)
+            pos_ids = torch.arange(action_features.shape[1], dtype=torch.long, device=vl_embeds.device)
             pos_embs = self.position_embedding(pos_ids).unsqueeze(0)
             action_features = action_features + pos_embs
 
         # Join vision, language, state and action embedding along sequence dimension.
         sa_embs = torch.cat((state_features, action_features), dim=1)
-        vl_embs = vl_embeds
         vl_attn_mask = backbone_output.backbone_attention_mask
 
         model_output = self.model(
             hidden_states=sa_embs,
-            encoder_hidden_states=vl_embs,
+            encoder_hidden_states=vl_embeds,
             encoder_attention_mask=vl_attn_mask,
             timestep=t_discretized,
         )
-        pred = self.action_decoder(model_output, embodiment_id)
+        pred = self.action_decoder(model_output)
         pred_actions = pred[:, -actions.shape[1] :]
 
         # Slice out only the action portion of pred and target.
@@ -323,19 +353,14 @@ class FlowmatchingActionHead(nn.Module):
     def get_action(self, backbone_output: BatchFeature, action_input: BatchFeature) -> BatchFeature:
         # Get vision and language embeddings.
         vl_embeds = backbone_output.backbone_features   # [B, T1, 1536]
-        embodiment_id = action_input.embodiment_id      # [B]
 
         # Embed state.
-        state_features = self.state_encoder(action_input.state, embodiment_id)   # [B, 1, 1536]
+        state_features = self.state_encoder(action_input.state)   # [B, 1, 1536]
 
         # Set initial actions as the sampled noise.
         batch_size = vl_embeds.shape[0]
         device = vl_embeds.device
-        actions = torch.randn(  # (B, T, 32)
-            size=(batch_size, self.config.action_horizon, self.config.action_dim),
-            dtype=vl_embeds.dtype,
-            device=device,
-        )
+        actions = torch.randn(size=(batch_size, self.config.action_horizon, self.config.action_dim),dtype=vl_embeds.dtype,device=device,) # (B, T, 32)
 
         num_steps = self.num_inference_timesteps
         dt = 1.0 / num_steps
@@ -347,7 +372,7 @@ class FlowmatchingActionHead(nn.Module):
 
             # Embed noised action trajectory.
             timesteps_tensor = torch.full(size=(batch_size,), fill_value=t_discretized, device=device)
-            action_features = self.action_encoder(actions, timesteps_tensor, embodiment_id)
+            action_features = self.action_encoder(actions, timesteps_tensor)
             # Maybe add position embedding.
             if self.config.add_pos_embed:  # True
                 pos_ids = torch.arange(action_features.shape[1], dtype=torch.long, device=device)
@@ -363,7 +388,7 @@ class FlowmatchingActionHead(nn.Module):
                 encoder_hidden_states=vl_embeds,
                 timestep=timesteps_tensor,
             )
-            pred = self.action_decoder(model_output, embodiment_id)  # [1, 1+T, 32]
+            pred = self.action_decoder(model_output)  # [1, 1+T, 32]
             pred_velocity = pred[:, -self.action_horizon :]          # [1, T, 32]
             # Update actions using euler integration.
             actions = actions + dt * pred_velocity

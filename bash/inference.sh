@@ -1,1 +1,1 @@
-python inference.py
+python -m pdb inference.py

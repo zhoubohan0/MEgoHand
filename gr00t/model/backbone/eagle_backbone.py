@@ -27,10 +27,7 @@ from gr00t.model.backbone.eagle2_hg_model.inference_eagle_repo import (
 
 from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificValues
 
-DEFAULT_EAGLE_MODEL_NAME = os.path.join(
-    os.path.dirname(gr00t.__file__), "model", "backbone", "eagle2_hg_model"
-)
-
+DEFAULT_EAGLE_MODEL_NAME = os.path.join(os.path.dirname(gr00t.__file__), "model", "backbone", "eagle2_hg_model")
 
 def get_embeddings(
     self,
@@ -39,37 +36,31 @@ def get_embeddings(
     input_ids=None,
     attention_mask=None,
     visual_features=None,
-    output_hidden_states=None,
-    skip_llm=False,
 ) -> torch.LongTensor:
-    assert self.img_context_token_id is not None
-    assert pixel_values is not None
-    if visual_features is not None:
-        vit_embeds = visual_features
-    else:
-        vit_embeds = self.extract_feature(pixel_values)
-
+    ## get visual embeddings from pixel, if provided then overwrite
+    assert pixel_values is not None and self.img_context_token_id is not None
+    vit_embeds = self.extract_feature(pixel_values) if visual_features is None else visual_features
+    ## get language embeddings, then overwrite some with visual embeddings
+    # 1. get input embeddings
     input_embeds = self.language_model.get_input_embeddings()(input_ids)
     B, N, C = input_embeds.shape
     input_embeds = input_embeds.reshape(B * N, C)
-
-    input_ids = input_ids.reshape(B * N)
-    selected = input_ids == self.img_context_token_id
+    # 2. get visual position
+    selected = input_ids.reshape(B * N) == self.img_context_token_id
     assert selected.sum() != 0
-
+    # 3. overwrite visual embeddings
     embeds_to_scatter = vit_embeds.reshape(-1, C).to(input_embeds.device, input_embeds.dtype)
     input_embeds[selected] = embeds_to_scatter
     input_embeds = input_embeds.reshape(B, N, C)
 
-    # return hidden_states
+    ## vllm forward
     embeddings = self.language_model.forward(
         inputs_embeds=input_embeds,
         attention_mask=attention_mask,
         output_hidden_states=True,
-    )
-    embeddings = embeddings.hidden_states[-1]
+    ).hidden_states[-1]
 
-    if reproject_vision:
+    if reproject_vision:  # only use the output of language and overwrite the input visual embeddings
         embeddings = embeddings.reshape(B * N, C)
         embeddings[selected] = embeds_to_scatter
         embeddings = embeddings.reshape(B, N, C)
@@ -77,6 +68,7 @@ def get_embeddings(
 
 
 class EagleBackbone(nn.Module):
+    valid_input_keys = ["pixel_values", "input_ids", "attention_mask"]
     def __init__(
         self,
         select_layer: int = 12,
@@ -85,7 +77,7 @@ class EagleBackbone(nn.Module):
         tune_visual: bool = False,
         reproject_vision: bool = False,
         scale_image_resolution: int = 1,
-        processor_cfg: dict = None,
+        processor_cfg: dict = dict(),
         projector_dim: int = -1,
         allow_reshape_visual: bool = True,
         remove_llm: bool = False,
@@ -175,6 +167,9 @@ class EagleBackbone(nn.Module):
                 self.model.mlp1.eval()
 
     def prepare_input(self, batch: dict) -> BatchFeature:
+        for key in self.valid_input_keys:
+            if key not in batch:
+                raise ValueError(f"Missing required input key: {key}")
         return BatchFeature(data=batch)
 
     def forward(self, vl_input: BatchFeature) -> BatchFeature:

@@ -27,7 +27,6 @@ from gr00t.data.embodiment_tags import EmbodimentTag
 from gr00t.data.schema import DatasetMetadata
 from gr00t.data.transform.base import ComposedModalityTransform
 from gr00t.model.gr00t_n1 import GR00T_N1
-COMPUTE_DTYPE = torch.bfloat16
 
 
 class BasePolicy(ABC):
@@ -52,7 +51,7 @@ class BasePolicy(ABC):
         raise NotImplementedError
 
 
-class Gr00tPolicy(BasePolicy):
+class MHMPolicy(BasePolicy):
     """
     A wrapper for Gr00t model checkpoints that handles loading the model, applying transforms,
     making predictions, and unapplying transforms. This loads some custom configs, stats
@@ -62,7 +61,7 @@ class Gr00tPolicy(BasePolicy):
 
     def __init__(
         self,
-        model_path: str,
+        model_cfg_path: str,
         embodiment_tag: Union[str, EmbodimentTag],
         modality_config: Dict[str, ModalityConfig],
         modality_transform: ComposedModalityTransform,
@@ -80,17 +79,17 @@ class Gr00tPolicy(BasePolicy):
             denoising_steps: Number of denoising steps to use for the action head.
             device (Union[int, str]): Device to run the model on.
         """
+        '''
         try:
             # NOTE(YL) this returns the local path to the model which is normally saved in ~/.cache/huggingface/hub/
             model_path = download_from_hg(model_path, repo_type="model")
         except (HFValidationError, RepositoryNotFoundError):
-            print(
-                f"Model not found or avail in the huggingface hub. Loading from local path: {model_path}")
-
+            print(f"Model not found or avail in the huggingface hub. Loading from local path: {model_path}")
+        '''
         self._modality_config = modality_config
         self._modality_transform = modality_transform
         self._modality_transform.eval()  # set this to eval mode
-        self.model_path = Path(model_path)
+        self.model_cfg_path = Path(model_cfg_path)
         self.device = device
         # Convert string embodiment tag to EmbodimentTag enum if needed
         if isinstance(embodiment_tag, str):
@@ -99,9 +98,9 @@ class Gr00tPolicy(BasePolicy):
             self.embodiment_tag = embodiment_tag
 
         # Load model
-        self._load_model(model_path)
+        self._load_model()
         # Load transforms
-        self._load_metadata(self.model_path / "experiment_cfg")
+        self._load_metadata()
         # Load horizons
         self._load_horizons()
 
@@ -222,8 +221,7 @@ class Gr00tPolicy(BasePolicy):
         return unnormalized_action
 
     def _get_action_from_normalized_input(self, normalized_input: Dict[str, Any]) -> torch.Tensor:
-        # Set up autocast context if needed
-        with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=COMPUTE_DTYPE):
+        with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             model_pred = self.model.get_action(normalized_input)
 
         normalized_action = model_pred["action_pred"].float()  # (B, T, Da)
@@ -272,32 +270,28 @@ class Gr00tPolicy(BasePolicy):
                 return False
         return True
 
-    def _load_model(self, model_path):
-        model = GR00T_N1.from_pretrained(model_path, torch_dtype=COMPUTE_DTYPE)
-        # TODO: refer to GR00T_N1Config.json for the model config
-        # from gr00t.model.gr00t_n1 import GR00T_N1Config
-        # model = GR00T_N1(GR00T_N1Config(),"")
+    def _load_model(self):
+        from gr00t.model.gr00t_n1 import GR00T_N1Config
+        with open(self.model_cfg_path / "config.json", "r") as f:
+            model_config = json.load(f)
+        model = GR00T_N1(GR00T_N1Config(**model_config),"")
+        print(model.named_parameters())
+        model.backbone.set_trainable_parameters(tune_visual=True, tune_llm=False)
+        model.action_head.set_trainable_parameters(tune_projector=True, tune_diffusion_model=True)
+        
+        # model = GR00T_N1.from_pretrained("nvidia/GR00T-N1-2B", torch_dtype=torch.bfloat16)
+        
         model.eval()  # Set model to eval mode
         model.to(device=self.device)  # type: ignore
         self.model = model
 
-    def _load_metadata(self, exp_cfg_dir: Path):
+    def _load_metadata(self, ):
         """Load the transforms for the model."""
         # Load metadata for normalization stats
-        metadata_path = exp_cfg_dir / "metadata.json"
+        metadata_path = self.model_cfg_path / "metadata.json"
         with open(metadata_path, "r") as f:
             metadatas = json.load(f)
-
-        # Get metadata for the specific embodiment
-        metadata_dict = metadatas.get(self.embodiment_tag.value)
-        if metadata_dict is None:
-            raise ValueError(
-                f"No metadata found for embodiment tag: {self.embodiment_tag.value}",
-                f"make sure the metadata.json file is present at {metadata_path}",
-            )
-
-        metadata = DatasetMetadata.model_validate(metadata_dict)
-
+        metadata = DatasetMetadata.model_validate(metadatas)
         self._modality_transform.set_metadata(metadata)
         self.metadata = metadata
 

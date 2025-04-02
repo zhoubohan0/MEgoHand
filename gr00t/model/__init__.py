@@ -14,4 +14,4 @@
 # limitations under the License.
 
 from .gr00t_n1 import GR00T_N1
-from .policy import Gr00tPolicy
+from .policy import MHMPolicy

@@ -217,8 +217,12 @@ class GR00T_N1(PreTrainedModel):
         self,
         inputs: dict,
     ) -> BatchFeature:
-        backbone_inputs, action_inputs = self.prepare_input(inputs)
+        backbone_inputs, action_inputs = self.prepare_input(inputs)  # repeat
         backbone_outputs = self.backbone(backbone_inputs)
+        '''
+        backbone_outputs['backbone_features']: [1, 99, 1536]
+        backbone_outputs['backbone_attention_mask']: [1, 99]
+        '''
         action_head_outputs = self.action_head.get_action(backbone_outputs, action_inputs)  # action_head_outputs['action_pred']: (B, T, Da)
         self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
         return action_head_outputs
@@ -249,12 +253,12 @@ class GR00T_N1(PreTrainedModel):
         # get the current model path being downloaded
         try:
             # NOTE(YL) This downloads the model to the local cache and returns the local path to the model saved in ~/.cache/huggingface/hub/
-            local_model_path = download_from_hg(
-                pretrained_model_name_or_path, repo_type="model")
+            local_model_path = download_from_hg(pretrained_model_name_or_path, repo_type="model")
         except (HFValidationError, RepositoryNotFoundError):
             print(
                 f"Model not found or avail in the huggingface hub. Loading from local path: {pretrained_model_name_or_path}")
             local_model_path = pretrained_model_name_or_path
+        breakpoint()
         pretrained_model = super().from_pretrained(local_model_path, local_model_path=local_model_path, **kwargs)
         pretrained_model.backbone.set_trainable_parameters(tune_visual=tune_visual, tune_llm=tune_llm)
         pretrained_model.action_head.set_trainable_parameters(tune_projector=tune_projector, tune_diffusion_model=tune_diffusion_model)
