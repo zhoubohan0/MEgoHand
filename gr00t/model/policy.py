@@ -19,14 +19,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 import numpy as np
 import torch
-from huggingface_hub.errors import HFValidationError, RepositoryNotFoundError
-
-from gr00t.utils.util import download_from_hg, glance_dict
+# from huggingface_hub.errors import HFValidationError, RepositoryNotFoundError
+# from gr00t.data.embodiment_tags import EmbodimentTag
+# from gr00t.utils.util import download_from_hg, glance_dict
 from gr00t.data.dataset import ModalityConfig
-from gr00t.data.embodiment_tags import EmbodimentTag
 from gr00t.data.schema import DatasetMetadata
 from gr00t.data.transform.base import ComposedModalityTransform
-from gr00t.model.gr00t_n1 import GR00T_N1
+from gr00t.model.gr00t_n1 import GR00T_N1, GR00T_N1Config
 
 
 class BasePolicy(ABC):
@@ -62,7 +61,6 @@ class MHMPolicy(BasePolicy):
     def __init__(
         self,
         model_cfg_path: str,
-        embodiment_tag: Union[str, EmbodimentTag],
         modality_config: Dict[str, ModalityConfig],
         modality_transform: ComposedModalityTransform,
         denoising_steps: Optional[int] = None,
@@ -90,26 +88,19 @@ class MHMPolicy(BasePolicy):
         self._modality_transform = modality_transform
         self._modality_transform.eval()  # set this to eval mode
         self.model_cfg_path = Path(model_cfg_path)
+        # self.embodiment_tag = EmbodimentTag(embodiment_tag) if isinstance(embodiment_tag, str) else embodiment_tag
         self.device = device
-        # Convert string embodiment tag to EmbodimentTag enum if needed
-        if isinstance(embodiment_tag, str):
-            self.embodiment_tag = EmbodimentTag(embodiment_tag)
-        else:
-            self.embodiment_tag = embodiment_tag
 
         # Load model
-        self._load_model()
+        self.model = self._load_model()
         # Load transforms
         self._load_metadata()
         # Load horizons
         self._load_horizons()
 
-        if denoising_steps is not None:
-            if hasattr(self.model, "action_head") and hasattr(
-                self.model.action_head, "num_inference_timesteps"
-            ):
-                self.model.action_head.num_inference_timesteps = denoising_steps
-                print(f"Set action denoising steps to {denoising_steps}")
+        if denoising_steps is not None and hasattr(self.model, "action_head") and hasattr(self.model.action_head, "num_inference_timesteps"):
+            self.model.action_head.num_inference_timesteps = denoising_steps
+            print(f"Set action denoising steps to {denoising_steps}")
 
     def apply_transforms(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -271,21 +262,17 @@ class MHMPolicy(BasePolicy):
         return True
 
     def _load_model(self):
-        from gr00t.model.gr00t_n1 import GR00T_N1Config
+        # model = GR00T_N1.from_pretrained("nvidia/GR00T-N1-2B", torch_dtype=torch.bfloat16)
         with open(self.model_cfg_path / "config.json", "r") as f:
             model_config = json.load(f)
         model = GR00T_N1(GR00T_N1Config(**model_config),"")
-        print(model.named_parameters())
         model.backbone.set_trainable_parameters(tune_visual=True, tune_llm=False)
         model.action_head.set_trainable_parameters(tune_projector=True, tune_diffusion_model=True)
-        
-        # model = GR00T_N1.from_pretrained("nvidia/GR00T-N1-2B", torch_dtype=torch.bfloat16)
-        
         model.eval()  # Set model to eval mode
         model.to(device=self.device)  # type: ignore
-        self.model = model
+        return model
 
-    def _load_metadata(self, ):
+    def _load_metadata(self):
         """Load the transforms for the model."""
         # Load metadata for normalization stats
         metadata_path = self.model_cfg_path / "metadata.json"

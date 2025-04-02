@@ -25,10 +25,7 @@ from gr00t.experiment.trainer import DualBrainTrainer
 from gr00t.model.backbone.eagle2_hg_model.inference_eagle_repo import EagleProcessor
 from gr00t.model.gr00t_n1 import GR00T_N1
 from gr00t.model.transforms import DefaultDataCollatorGR00T
-from gr00t.utils.experiment import (
-    CheckpointFormatCallback,
-    safe_save_model_for_hf_trainer,
-)
+from gr00t.utils.experiment import CheckpointFormatCallback, safe_save_model_for_hf_trainer
 
 
 class TrainRunner:
@@ -53,9 +50,7 @@ class TrainRunner:
         )
         print(f"Run name: {training_args.run_name}")
 
-        data_collator = DefaultDataCollatorGR00T(
-            processor=EagleProcessor(),
-        )
+        data_collator = DefaultDataCollatorGR00T(processor=EagleProcessor(),)
 
         # Make sure model_dtype and training_args dtype are compatible
         compute_dtype = torch.float16 if training_args.bf16 else torch.float32

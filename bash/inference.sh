@@ -1,1 +1,1 @@
-python -m pdb inference.py
+python -m scripts.inference
