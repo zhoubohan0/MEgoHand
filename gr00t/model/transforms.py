@@ -32,15 +32,11 @@ EAGLE_KEYS = ["pixel_values", "input_ids", "attention_mask"]
 def collate_gr00t(features: List[dict], processor) -> dict:
     batch = {}
     keys = features[0].keys()
-    assert all(
-        all(key in feature for key in keys) for feature in features
-    ), "All features must have the same keys."
-
-    for key in keys:
+    assert all(all(key in feature for key in keys) for feature in features), "All features must have the same keys."
+    for key in keys:  # ['state', 'state_mask', 'pixel_values', 'input_ids', 'attention_mask', 'embodiment_id']
         values = [elem[key] for elem in features]
         if key not in EAGLE_KEYS:
-            # state, state_mask, action and action_mask.
-            # Stack to form the batch dimension.
+            # stack (state, state_mask, action, action_mask) to form the batch dimension
             batch[key] = torch.from_numpy(np.stack(values))
 
     vlm_batch = processor.collate_fn(features)

@@ -690,7 +690,7 @@ class Gr1ArmsWaistDataConfig(Gr1ArmsOnlyDataConfig):
 
 
 class HandMotionDataConfig(BaseDataConfig):
-    action_horizon = 16
+    action_horizon = 2
     video_keys = ["video.ego_view"]
     state_keys = [  # 109
         "state.theta",  # 15 * 6
@@ -778,7 +778,6 @@ class HandMotionDataConfig(BaseDataConfig):
             ),
         ]
         return ComposedModalityTransform(transforms=transforms)
-
 
 
 DATA_CONFIG_MAP = {

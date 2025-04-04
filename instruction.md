@@ -1,1 +1,1 @@
-pip install pydantic av numpydantic
+pip install pydantic av numpydantic open3d natsort

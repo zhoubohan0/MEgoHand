@@ -26,7 +26,7 @@ from gr00t.data.dataset import ModalityConfig
 from gr00t.data.schema import DatasetMetadata
 from gr00t.data.transform.base import ComposedModalityTransform
 from gr00t.model.gr00t_n1 import GR00T_N1, GR00T_N1Config
-
+from gr00t.utils.util import glance_dict
 
 class BasePolicy(ABC):
     @abstractmethod
@@ -67,8 +67,6 @@ class MHMPolicy(BasePolicy):
         device: Union[int, str] = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         """
-        Initialize the Gr00tPolicy.
-
         Args:
             model_path (str): Path to the model checkpoint directory or the huggingface hub id.
             modality_config (Dict[str, ModalityConfig]): The modality config for the model.
@@ -280,7 +278,6 @@ class MHMPolicy(BasePolicy):
             metadatas = json.load(f)
         metadata = DatasetMetadata.model_validate(metadatas)
         self._modality_transform.set_metadata(metadata)
-        self.metadata = metadata
 
     def _load_horizons(self):
         """Load the horizons needed for the model."""

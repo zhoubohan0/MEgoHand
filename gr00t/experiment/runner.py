@@ -19,7 +19,7 @@ from pathlib import Path
 
 import torch
 from transformers import TrainingArguments, set_seed
-
+from torch.utils.data.dataloader import default_collate
 from gr00t.data.dataset import LeRobotSingleDataset
 from gr00t.experiment.trainer import DualBrainTrainer
 from gr00t.model.backbone.eagle2_hg_model.inference_eagle_repo import EagleProcessor
@@ -37,34 +37,22 @@ class TrainRunner:
         resume_from_checkpoint: bool = False,
     ):
         self.training_args = training_args
-        self.output_dir = Path(training_args.output_dir)
-        self.exp_cfg_dir = self.output_dir / "experiment_cfg"
-        self.exp_cfg_dir.mkdir(parents=True, exist_ok=True)
+        self.exp_cfg_dir = Path(os.path.join(training_args.output_dir, "experiment_cfg"))
         self.resume_from_checkpoint = resume_from_checkpoint
-        self.train_dataset = train_dataset
         # Set up training arguments
-        training_args.run_name = (
-            training_args.output_dir.split("/")[-1]
-            if training_args.run_name is None
-            else training_args.run_name
-        )
-        print(f"Run name: {training_args.run_name}")
-
-        data_collator = DefaultDataCollatorGR00T(processor=EagleProcessor(),)
-
-        # Make sure model_dtype and training_args dtype are compatible
-        compute_dtype = torch.float16 if training_args.bf16 else torch.float32
+        training_args.run_name = training_args.output_dir.split("/")[-1] if training_args.run_name is None else training_args.run_name
         set_seed(training_args.seed)
         # Create trainer
         trainer = self.create_trainer(
             model=model,
             training_args=training_args,
             train_dataset=train_dataset,
-            data_collator=data_collator,
-            compute_dtype=compute_dtype,
+            data_collator=default_collate,#DefaultDataCollatorGR00T(processor=EagleProcessor(),),
+            compute_dtype=torch.float16 if training_args.bf16 else torch.float32,
         )
         self.trainer = trainer
 
+        '''
         # write the metadata to the experiment config dir
         self.rank = int(os.environ.get("RANK", 0))
         if self.rank == 0:
@@ -77,10 +65,10 @@ class TrainRunner:
             )
             with open(self.exp_cfg_dir / "metadata.json", "w") as f:
                 json.dump(metadata_json, f, indent=4)
-
+        '''
         # Set up reporting
         report_to = training_args.report_to
-        if report_to == "wandb":
+        if "wandb" in report_to:
             # Set the environment variables for wandb
             if "WANDB_PROJECT" not in os.environ:
                 os.environ["WANDB_PROJECT"] = "gr00t-training"
@@ -90,7 +78,7 @@ class TrainRunner:
                     os.environ["WANDB_RUN_ID"] = runtime_id
             os.environ["WANDB_DIR"] = training_args.output_dir
 
-            wandb_config_file = self.output_dir / "wandb_config.json"
+            wandb_config_file = os.path.join(training_args.output_dir, "wandb_config.json")
             with open(wandb_config_file, "w") as f:
                 json.dump(
                     {
@@ -136,9 +124,7 @@ class TrainRunner:
 
         # Add checkpoint format callback to ensure experiment_cfg is copied to each checkpoint
         run_name = training_args.run_name
-        ckpt_format_callback = CheckpointFormatCallback(
-            run_name=run_name, exp_cfg_dir=self.exp_cfg_dir
-        )
+        ckpt_format_callback = CheckpointFormatCallback(run_name=run_name, exp_cfg_dir=self.exp_cfg_dir)
         trainer.add_callback(ckpt_format_callback)
 
         # Log dataloader information

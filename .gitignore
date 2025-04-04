@@ -12,8 +12,9 @@ logs
 demo_data
 getting_started
 media
-scripts
 tests
 
 
 GR00T-N1-2B
+utils/transform.py
+manopth/

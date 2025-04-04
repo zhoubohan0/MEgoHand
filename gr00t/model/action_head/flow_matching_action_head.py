@@ -307,7 +307,6 @@ class FlowmatchingActionHead(nn.Module):
 
         # Embed state.
         state_features = self.state_encoder(action_input.state)
-        breakpoint()
         # Embed noised action trajectory.
         actions = action_input.action
         noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
@@ -342,11 +341,10 @@ class FlowmatchingActionHead(nn.Module):
 
         # Slice out only the action portion of pred and target.
         action_mask = action_input.action_mask
-        loss = F.mse_loss(pred_actions, velocity, reduction="none") * action_mask
+        # TODO
+        loss = F.smooth_l1_loss(pred_actions, velocity, reduction="none") * action_mask
         loss = loss.sum() / action_mask.sum()
-        output_dict = {
-            "loss": loss,
-        }
+        output_dict = dict(loss=loss)
         return BatchFeature(data=output_dict)
 
     @torch.no_grad()

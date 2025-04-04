@@ -14,17 +14,13 @@
 # limitations under the License.
 
 import os
-
 import torch
 from torch import nn
 from transformers import AutoConfig, AutoModel
 from transformers.feature_extraction_utils import BatchFeature
 
 import gr00t
-from gr00t.model.backbone.eagle2_hg_model.inference_eagle_repo import (
-    reshape_model_embeddings,
-)
-
+from gr00t.model.backbone.eagle2_hg_model.inference_eagle_repo import reshape_model_embeddings
 from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificValues
 
 DEFAULT_EAGLE_MODEL_NAME = os.path.join(os.path.dirname(gr00t.__file__), "model", "backbone", "eagle2_hg_model")
@@ -39,6 +35,7 @@ def get_embeddings(
 ) -> torch.LongTensor:
     ## get visual embeddings from pixel, if provided then overwrite
     assert pixel_values is not None and self.img_context_token_id is not None
+    pixel_values, input_ids, attention_mask = pixel_values.squeeze(1), input_ids.squeeze(1), attention_mask.squeeze(1)  # avoid additional batch dim
     vit_embeds = self.extract_feature(pixel_values) if visual_features is None else visual_features
     ## get language embeddings, then overwrite some with visual embeddings
     # 1. get input embeddings
