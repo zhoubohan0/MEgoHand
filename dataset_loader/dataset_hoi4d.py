@@ -61,7 +61,7 @@ class HOI4DDataset(MetaDataset):
             self.task_list = [line.strip() for line in f]
 
         # 测试
-        self.task_list = ["ZY20210800004/H4/C14/N30/S335/s02/T2"]
+        self.task_list = ["ZY20210800004/H4/C14/N30/S335/s02/T2", "ZY20210800001/H1/C13/N17/S179/s05/T4"]
 
         self.task_defination = pd.read_csv(os.path.join(self.root, "definitions", "task", "task_definitions.csv" ))
 
