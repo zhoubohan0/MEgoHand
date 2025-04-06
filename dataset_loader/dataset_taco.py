@@ -35,6 +35,7 @@ class TACODataset(MetaDataset):
     def __init__(self, 
         root_path='/home/zbh/Desktop/zbh/robot-rl/TACO-Instructions/dataset/preview/',
         object_model_path='/home/zbh/Desktop/zbh/robot-rl/BiDexHD/assets/TACOobjects/',
+        is_render_depth=False
     ):
         super().__init__(root_path)
         # path
@@ -66,7 +67,7 @@ class TACODataset(MetaDataset):
         # load task
         self.task_list = [each[len(self.hand_pose_path):] for each in glob(join(self.hand_pose_path, "*/*"))]  # triplet/sequence_name
         self.task_list = ['(smear, glue gun, plate)/20231010_194']
-        
+        self.is_render_depth=is_render_depth
         
     def load_task(self, task_name='(smear, glue gun, plate)/20231010_194'):
         triplet, seq_name = task_name.split("/")
@@ -319,8 +320,8 @@ class TACODatasetCollector(MetaDataset):
    
 if __name__ == "__main__":
     # TACODatasetCollector()
-    taco_dataset = TACODataset()
-    taco_dataset.initialize_data_storage(TACOStorage, dict(window_size=30, side='right', is_render_depth=False))
+    taco_dataset = TACODataset(is_render_depth=False)
+    taco_dataset.initialize_data_storage(TACOStorage, dict(window_size=30, side='right'))
     print(len(taco_dataset))
     batch = taco_dataset[0]
     breakpoint()

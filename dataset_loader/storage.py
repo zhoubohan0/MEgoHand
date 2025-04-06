@@ -142,7 +142,6 @@ class MetaDataset(Dataset):
         data_storage_kwargs: {
             'window_size': int,
             'side': str,
-            'is_render_depth': bool,
         }
         split: {
             'train': float,

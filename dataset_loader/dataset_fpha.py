@@ -272,6 +272,7 @@ class FPHAStorage(Storage):
 class FPHADataset(MetaDataset):
     def __init__(self,
         root_path="/media/ps/zhan/DATASET/FPHA/",
+        is_render_depth=False
     ):
         super().__init__(root_path)
 
@@ -305,6 +306,8 @@ class FPHADataset(MetaDataset):
         # load task
         self.task_list = [f'{x[0]}/{x[1]}/{x[2]}/{x[3]}' for x in self._load_subject_info()]
         self.task_list = ['Subject_1/close_milk/1/89', 'Subject_1/close_milk/2/78']  # , 'Subject_1/close_milk/3/85', 'Subject_1/close_milk/4/86'
+
+        self.is_render_depth=is_render_depth
 
     def _load_subject_info(self):
 
@@ -423,7 +426,7 @@ class FPHADataset(MetaDataset):
 
         # save rendered RGBD and record the file paths
         extrinsic_matrix_sequence = extrinsic_matrix_sequence.cpu().numpy() 
-        if self.data_storage.is_render_depth:
+        if self.is_render_depth:
             render_depth_filenames = [os.path.splitext(i)[0].replace('color','depth')+'.png' for i in real_rgb_filenames]
             vis = VisOpen3D(*Image.open(real_rgb_filenames[0]).size, visible=False)
             for i, rdf in tqdm(enumerate(render_depth_filenames), desc=f"Rendering depth images for {task_name}", total=len(render_depth_filenames)):
@@ -470,8 +473,8 @@ class FPHADataset(MetaDataset):
 
 
 if __name__ == "__main__":
-    fpha_dataset = FPHADataset()
-    fpha_dataset.initialize_data_storage(FPHAStorage, dict(window_size=30, side='right', is_render_depth=False))
+    fpha_dataset = FPHADataset(is_render_depth=False)
+    fpha_dataset.initialize_data_storage(FPHAStorage, dict(window_size=30, side='right'))
     print(len(fpha_dataset))
     batch = fpha_dataset[0]  # batch_size=1
     breakpoint()

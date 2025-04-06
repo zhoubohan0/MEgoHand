@@ -6,12 +6,13 @@ from gr00t.data.dataset import LeRobotSingleDataset
 from gr00t.model.policy import MHMPolicy
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.utils.util import glance_dict
+from dataset_loader import *
 
 # model
 data_config = DATA_CONFIG_MAP["hand_motion"]
 modality_config = data_config.modality_config()
 glance_dict(modality_config)
-modality_transform = data_config.transform()
+modality_transform = data_config.transform(split='eval')
 policy = MHMPolicy(
     model_cfg_path='model_config',
     modality_config=modality_config,
@@ -99,7 +100,8 @@ step_data["action.rot"] = np.zeros((16, 6), dtype=np.float32)
 step_data["action.trans"] = np.zeros((16, 3), dtype=np.float32)
 step_data['annotation.human.action.task_description'] = ['pick the squash from the counter and place it in the plate']
 '''
-from dataset_loader import *
+
+# dataset
 test_dataset_name_list = [
     "hoi4d",  # zhan
     # "oakink2",  # zhan_4t 
@@ -108,11 +110,12 @@ test_dataset_list = []
 for each in test_dataset_name_list:
     dataset_name = each.upper()
     dataset = eval(f"{dataset_name}Dataset")()
-    dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right', is_render_depth=False), split=dict(train=1.0))
+    dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right'), split=dict(train=1.0))
     test_dataset_list.append(dataset)
 cascaded_dataset = CascadedDataset(test_dataset_list)
-step_data = cascaded_dataset[0]
 
+# inference a sample
+step_data = cascaded_dataset[0]
 predicted_action = policy.get_action(step_data)
 glance_dict(predicted_action)
 breakpoint()

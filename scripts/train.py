@@ -120,9 +120,7 @@ def main(config: Config):
     """Main training function."""
     # ------------ step 1: load dataset ------------
     data_config = DATA_CONFIG_MAP[config.data_config]
-    modality_configs = data_config.modality_config()
-    transforms = data_config.transform()
-    transforms.set_metadata(DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r"))))
+    modality_configs = data_config.modality_config()  # TODO
     '''
     train_dataset = LeRobotSingleDataset(
         dataset_path=config.dataset_path,
@@ -139,13 +137,18 @@ def main(config: Config):
     for each in train_dataset_name_list:
         train_dataset_name = each.upper()
         train_dataset = eval(f"{train_dataset_name}Dataset")()
-        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=False), split=dict(train=0.95))
+        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(train=0.95))
         train_dataset_list.append(train_dataset)
         eval_dataset = eval(f"{train_dataset_name}Dataset")()
-        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=False), split=dict(eval=0.95))
+        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(eval=0.95))
         eval_dataset_list.append(eval_dataset)
-    train_dataset = CascadedDatasetWithTransform(train_dataset_list, transforms)
-    eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, transforms)
+    transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO
+    train_transforms = data_config.transform(split='train')
+    train_transforms.set_metadata(transform_meta)
+    train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
+    eval_transforms = data_config.transform(split='eval')
+    eval_transforms.set_metadata(transform_meta)
+    eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, eval_transforms)
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
@@ -174,7 +177,7 @@ def main(config: Config):
         tf32=True,
         per_device_train_batch_size=config.batch_size,
         gradient_accumulation_steps=1,
-        dataloader_pin_memory=False,
+        dataloader_pin_memory=True,
         # TODO
         dataloader_num_workers=0, #config.dataloader_num_workers,
         dataloader_persistent_workers=False,#True,

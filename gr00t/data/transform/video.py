@@ -532,9 +532,7 @@ class VideoToTensor(VideoTransform):
                 4,
                 5,
             ], f"Video {key} must have 4 or 5 dimensions, got {data[key].ndim}"
-            assert (
-                data[key].dtype == np.uint8
-            ), f"Video {key} must have dtype uint8, got {data[key].dtype}"
+            # assert data[key].dtype == np.uint8, f"Video {key} must have dtype uint8, got {data[key].dtype}"
             input_resolution = data[key].shape[-3:-1][::-1]
             if key in self.original_resolutions:
                 expected_resolution = self.original_resolutions[key]
@@ -553,7 +551,7 @@ class VideoToTensor(VideoTransform):
         Returns:
             tensor of shape [T, C, H, W] in range [0, 1]
         """
-        frames_tensor = torch.from_numpy(frames).to(torch.float32) / 255.0
+        frames_tensor = torch.as_tensor(frames).to(torch.float32) / 255.0
         return frames_tensor.permute(0, 3, 1, 2)  # [T, C, H, W]
 
 

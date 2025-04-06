@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 import numpy as np
 import torch
+from safetensors.torch import load_file
 # from huggingface_hub.errors import HFValidationError, RepositoryNotFoundError
 # from gr00t.data.embodiment_tags import EmbodimentTag
 # from gr00t.utils.util import download_from_hg, glance_dict
@@ -64,6 +65,7 @@ class MHMPolicy(BasePolicy):
         modality_config: Dict[str, ModalityConfig],
         modality_transform: ComposedModalityTransform,
         denoising_steps: Optional[int] = None,
+        pretrain_ckpt: str = "",
         device: Union[int, str] = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         """
@@ -90,7 +92,7 @@ class MHMPolicy(BasePolicy):
         self.device = device
 
         # Load model
-        self.model = self._load_model()
+        self.model = self._load_model(pretrain_ckpt)
         # Load transforms
         self._load_metadata()
         # Load horizons
@@ -259,16 +261,19 @@ class MHMPolicy(BasePolicy):
                 return False
         return True
 
-    def _load_model(self):
-        # model = GR00T_N1.from_pretrained("nvidia/GR00T-N1-2B", torch_dtype=torch.bfloat16)
-        with open(self.model_cfg_path / "config.json", "r") as f:
-            model_config = json.load(f)
-        model = GR00T_N1(GR00T_N1Config(**model_config),"")
-        model.backbone.set_trainable_parameters(tune_visual=True, tune_llm=False)
-        model.action_head.set_trainable_parameters(tune_projector=True, tune_diffusion_model=True)
-        model.eval()  # Set model to eval mode
-        model.to(device=self.device)  # type: ignore
-        return model
+    def _load_model(self, pretrain_ckpt=''):
+        if not pretrain_ckpt:  # train
+            with open(self.model_cfg_path / "config.json", "r") as f:
+                model_config = json.load(f)
+            model = GR00T_N1(GR00T_N1Config(**model_config),"")
+            # partially load the model
+            model.load_state_dict(load_file("GR00T-N1-2B/model.safetensors"), strict=False)
+            model.backbone.set_trainable_parameters(tune_visual=True, tune_llm=False)
+            model.action_head.set_trainable_parameters(tune_projector=True, tune_diffusion_model=True)
+        else:  # inference
+            model = GR00T_N1.from_pretrained(pretrain_ckpt, torch_dtype=torch.bfloat16)
+            model.eval()  # Set model to eval mode
+        return model.to(device=self.device)  # type: ignore
 
     def _load_metadata(self):
         """Load the transforms for the model."""

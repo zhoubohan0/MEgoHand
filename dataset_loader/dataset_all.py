@@ -49,7 +49,7 @@ class CascadedDatasetWithTransform(CascadedDataset):
 if __name__ == "__main__":
     train_dataset_name_list = ["fpha", "hoi4d", ]  # "arctic" 
     train_dataset_list = []
-    data_storage_kwargs = dict(window_size=2, side='right', is_render_depth=False)
+    data_storage_kwargs = dict(window_size=2, side='right')
     # Concatenate datasets
     for each in train_dataset_name_list:
         dataset_name = each.upper()

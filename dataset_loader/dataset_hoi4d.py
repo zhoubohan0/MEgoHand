@@ -41,7 +41,7 @@ class HOI4DStorage(Storage):
 class HOI4DDataset(MetaDataset):
     def __init__(self, 
         root = "/media/ps/zhan/DATASET/HOI4D/",
-        window_size=30,
+        is_render_depth=False,
     ):
         super().__init__(root)
 
@@ -62,8 +62,8 @@ class HOI4DDataset(MetaDataset):
 
         # 测试
         self.task_list = ["ZY20210800004/H4/C14/N30/S335/s02/T2", "ZY20210800001/H1/C13/N17/S179/s05/T4"]
-
-        self.task_defination = pd.read_csv(os.path.join(self.root, "definitions", "task", "task_definitions.csv" ))
+        self.is_render_depth=is_render_depth
+        # self.task_defination = pd.read_csv(os.path.join(self.root, "definitions", "task", "task_definitions.csv" ))
 
     def read_rtd(self, file):
         """
@@ -484,8 +484,8 @@ class HOI4DDataset(MetaDataset):
     
 
 if __name__ == "__main__":
-    hoi4d_dataset = HOI4DDataset()
-    hoi4d_dataset.initialize_data_storage(HOI4DStorage, dict(window_size=30, side='right', is_render_depth=False))
+    hoi4d_dataset = HOI4DDataset(is_render_depth=False)
+    hoi4d_dataset.initialize_data_storage(HOI4DStorage, dict(window_size=30, side='right'))
     print(len(hoi4d_dataset))
     batch = hoi4d_dataset[0]  # batch_size=1
     breakpoint()

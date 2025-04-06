@@ -409,7 +409,7 @@ class H2ODataset(MetaDataset):
 
 if __name__ == "__main__":
     h2o_dataset = H2ODataset()
-    h2o_dataset.initialize_data_storage(H2OStorage, dict(window_size=30, side='right', is_render_depth=False))
+    h2o_dataset.initialize_data_storage(H2OStorage, dict(window_size=30, side='right'))
     print(len(h2o_dataset))
     batch = h2o_dataset[0]  # batch_size=1
     breakpoint()

@@ -738,47 +738,83 @@ class HandMotionDataConfig(BaseDataConfig):
 
         return modality_configs
 
-    def transform(self) -> ModalityTransform:
-        transforms = [
-            # video transforms
-            VideoToTensor(apply_to=self.video_keys),
-            VideoCrop(apply_to=self.video_keys, scale=0.95),
-            VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
-            VideoColorJitter(
-                apply_to=self.video_keys,
-                brightness=0.3,
-                contrast=0.4,
-                saturation=0.5,
-                hue=0.08,
-            ),
-            VideoToNumpy(apply_to=self.video_keys),
-            # state transforms
-            StateActionToTensor(apply_to=self.state_keys),
-            StateActionTransform(
-                apply_to=self.state_keys,
-                normalization_modes={key: "min_max" for key in self.state_keys},  # "q99", "mean_std", "min_max", "binary"
-            ),
-            # action transforms
-            StateActionToTensor(apply_to=self.action_keys),
-            StateActionTransform(
-                apply_to=self.action_keys,
-                normalization_modes={key: "min_max" for key in self.action_keys},  # "q99", "mean_std", "min_max", "binary"
-            ),
-            # concat transforms
-            ConcatTransform(
-                video_concat_order=self.video_keys,
-                state_concat_order=self.state_keys,
-                action_concat_order=self.action_keys,
-            ),
-            # model-specific transform
-            GR00TTransform(
-                state_horizon=len(self.observation_indices),
-                action_horizon=self.action_horizon,
-                max_state_dim=109,
-                max_action_dim=99,
-            ),
-        ]
-        return ComposedModalityTransform(transforms=transforms)
+    def transform(self, split) -> ModalityTransform:
+        if split == 'test': # test, dataloader sample must be torch tensor
+            video_transforms = [
+                VideoToTensor(apply_to=self.video_keys),
+                VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
+                VideoToNumpy(apply_to=self.video_keys),
+            ]
+            vector_transforms = [
+                # state transforms
+                StateActionTransform(
+                    apply_to=self.state_keys,
+                    normalization_modes={key: "min_max" for key in self.state_keys},  # "q99", "mean_std", "min_max", "binary"
+                ),
+                # action transforms
+                StateActionTransform(
+                    apply_to=self.action_keys,
+                    normalization_modes={key: "min_max" for key in self.action_keys},  # "q99", "mean_std", "min_max", "binary"
+                ),
+                # concat transforms
+                ConcatTransform(
+                    video_concat_order=self.video_keys,
+                    state_concat_order=self.state_keys,
+                    action_concat_order=self.action_keys,
+                ),
+                # VLM transform
+                GR00TTransform(
+                    state_horizon=len(self.observation_indices),
+                    action_horizon=self.action_horizon,
+                    max_state_dim=109,
+                    max_action_dim=99,
+                ),
+            ]
+        else:
+            if split == 'train':
+                video_transforms = [
+                    VideoToTensor(apply_to=self.video_keys),
+                    VideoCrop(apply_to=self.video_keys, scale=0.95),
+                    VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
+                    VideoColorJitter(apply_to=self.video_keys, brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08),
+                    VideoToNumpy(apply_to=self.video_keys),
+                ]
+            elif split == 'eval':
+                video_transforms = [
+                    VideoToTensor(apply_to=self.video_keys),
+                    VideoResize(apply_to=self.video_keys, height=224, width=224, interpolation="linear"),
+                    VideoToNumpy(apply_to=self.video_keys),
+                ]
+            else:
+                raise ValueError(f"Unknown split: {split}")
+            vector_transforms = [
+                # state transforms
+                StateActionToTensor(apply_to=self.state_keys),
+                StateActionTransform(
+                    apply_to=self.state_keys,
+                    normalization_modes={key: "min_max" for key in self.state_keys},  # "q99", "mean_std", "min_max", "binary"
+                ),
+                # action transforms
+                StateActionToTensor(apply_to=self.action_keys),
+                StateActionTransform(
+                    apply_to=self.action_keys,
+                    normalization_modes={key: "min_max" for key in self.action_keys},  # "q99", "mean_std", "min_max", "binary"
+                ),
+                # concat transforms
+                ConcatTransform(
+                    video_concat_order=self.video_keys,
+                    state_concat_order=self.state_keys,
+                    action_concat_order=self.action_keys,
+                ),
+                # VLM transform
+                GR00TTransform(
+                    state_horizon=len(self.observation_indices),
+                    action_horizon=self.action_horizon,
+                    max_state_dim=109,
+                    max_action_dim=99,
+                ),
+            ]
+        return ComposedModalityTransform(transforms=video_transforms + vector_transforms)
 
 
 DATA_CONFIG_MAP = {

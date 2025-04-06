@@ -188,6 +188,8 @@ def mp42imagefiles(video_path, save_rgb_dir, frame_format="%06d.jpg", way='ffmpe
     # print(f"Saved {frame_save} frames to {save_rgb_dir}")
 
 def ari2imagefiles(video_path, save_depth_dir, frame_format="%06d.png", way='ffmpeg'):
+    if os.path.exists(save_depth_dir):
+        return
     os.makedirs(save_depth_dir, exist_ok=True)
     if way == 'ffmpeg':
         os.system(f'ffmpeg -i "{video_path}" {os.path.join(save_depth_dir, frame_format)}')
