@@ -3,6 +3,7 @@ import importlib
 import cv2
 from torch.utils.data import Dataset
 from dataset_loader import *
+from utils.util import find_lower_left
 
 
 class CascadedDataset(Dataset):
@@ -20,7 +21,7 @@ class CascadedDataset(Dataset):
 
     def __getitem__(self, idx) -> dict:
         try:
-            dataset_id = np.searchsorted(self.cumsum_length_list, idx+1) - 1
+            dataset_id = find_lower_left(self.cumsum_length_list, idx)
             sample_idx = idx - self.cumsum_length_list[dataset_id]
             dataset = self.dataset_list[dataset_id]
             sample = dataset[sample_idx]
@@ -46,18 +47,18 @@ class CascadedDatasetWithTransform(CascadedDataset):
         return self.transform(super().__getitem__(idx))
 
 if __name__ == "__main__":
-    dataset_name_list = ["fpha", "hoi4d", ]  # "arctic" 
-    dataset_list = []
+    train_dataset_name_list = ["fpha", "hoi4d", ]  # "arctic" 
+    train_dataset_list = []
     data_storage_kwargs = dict(window_size=2, side='right', is_render_depth=False)
     # Concatenate datasets
-    for each in dataset_name_list:
+    for each in train_dataset_name_list:
         dataset_name = each.upper()
         dataset = eval(f"{dataset_name}Dataset")()
-        dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), data_storage_kwargs)
-        dataset_list.append(dataset)
-    cascaded_dataset = CascadedDataset(dataset_list)
+        dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.95))
+        train_dataset_list.append(dataset)
+    cascaded_dataset = CascadedDataset(train_dataset_list)
     print(len(cascaded_dataset), cascaded_dataset.cumsum_length_list)
-    for each in dataset_list:
+    for each in train_dataset_list:
         print(f"{each.__class__.__name__}: {len(each)}, {each.data_storage.cumsum_length_list}")
     # examine samples
     for i in range(0,len(cascaded_dataset),100):

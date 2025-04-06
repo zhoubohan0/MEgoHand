@@ -1,7 +1,6 @@
 import os, pickle, joblib, torch, trimesh
 import numpy as np
 from os.path import join, basename, dirname
-from natsort import natsorted
 from glob import glob
 from tqdm import tqdm
 

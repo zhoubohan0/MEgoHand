@@ -4,9 +4,7 @@ import matplotlib.pyplot as plt
 import hashlib
 from PIL import Image, ImageDraw, ImageFont
 from bisect import bisect_left, bisect_right
-from glob import glob
 from tqdm import tqdm
-from natsort import natsorted
 from PIL import Image
 
 from manopth.manotorch.manolayer import ManoLayer

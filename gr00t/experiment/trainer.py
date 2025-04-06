@@ -151,3 +151,11 @@ class DualBrainTrainer(transformers.Trainer):
                 os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
             )
         return super().train(resume_from_checkpoint, trial, ignore_keys_for_eval, **kwargs)
+
+    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):  # TODO: override
+        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
+    
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):  # TODO: override
+        # Custom preprocessing or model calls
+        return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys)
+        

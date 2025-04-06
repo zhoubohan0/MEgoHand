@@ -2,8 +2,9 @@ import numpy as np
 from tqdm import tqdm
 import torch, cv2
 from torch.utils.data import Dataset
-from utils.util import read_single_image
+from utils.util import read_single_image, find_lower_left
 from utils.rot import compute_relative_pose_in_sequence, rotmat_to_rot6d, aa_to_rot6d
+from natsort import natsorted
 
 class Storage:
     '''
@@ -85,7 +86,7 @@ class Storage:
         '''
         frame_id = self.valid_timestep_list[idx]
         # binary search the trajectory index, and index the special
-        traj_id = np.searchsorted(self.cumsum_length_list, frame_id+1) - 1
+        traj_id = find_lower_left(self.cumsum_length_list, frame_id)
 
         if relative:
             # calculate relative hand pose
@@ -135,7 +136,24 @@ class MetaDataset(Dataset):
             return class_name[:-7]  # 'XDataset' -> 'X'
         return class_name
         
-    def initialize_data_storage(self, data_storage_class, data_storage_kwargs):
+    def initialize_data_storage(self, data_storage_class, data_storage_kwargs, split=dict(train=0.95)):
+        '''
+        data_storage_class: Storage
+        data_storage_kwargs: {
+            'window_size': int,
+            'side': str,
+            'is_render_depth': bool,
+        }
+        split: {
+            'train': float,
+            'eval': float,
+        }
+        '''
+        self.task_list = natsorted(self.task_list)  # ensure unique order
+        if 'train' in split:  # train, can be 100%
+            self.task_list = self.task_list[:int(len(self.task_list) * split['train'])]
+        else:  # eval, default 5%
+            self.task_list = self.task_list[int(len(self.task_list) * split['eval']):]
         self.data_storage = data_storage_class(**data_storage_kwargs)
         for task_name in tqdm(self.task_list, desc="Loading tasks..."):
             task_data_dict = self.load_task(task_name)

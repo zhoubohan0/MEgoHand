@@ -470,3 +470,6 @@ def glance_dict(dic):
             print(key, value.shape)
         else:
             print(key, value)
+
+def find_lower_left(ls, x):
+    return np.searchsorted(ls, x + 1) - 1

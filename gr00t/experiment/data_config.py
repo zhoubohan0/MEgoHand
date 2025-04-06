@@ -690,6 +690,7 @@ class Gr1ArmsWaistDataConfig(Gr1ArmsOnlyDataConfig):
 
 
 class HandMotionDataConfig(BaseDataConfig):
+    side = 'right'
     action_horizon = 2
     video_keys = ["video.ego_view"]
     state_keys = [  # 109

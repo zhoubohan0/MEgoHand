@@ -100,17 +100,17 @@ step_data["action.trans"] = np.zeros((16, 3), dtype=np.float32)
 step_data['annotation.human.action.task_description'] = ['pick the squash from the counter and place it in the plate']
 '''
 from dataset_loader import *
-dataset_name_list = [
+test_dataset_name_list = [
     "hoi4d",  # zhan
     # "oakink2",  # zhan_4t 
 ]
-dataset_list = []
-for each in dataset_name_list:
+test_dataset_list = []
+for each in test_dataset_name_list:
     dataset_name = each.upper()
     dataset = eval(f"{dataset_name}Dataset")()
-    dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right', is_render_depth=False))
-    dataset_list.append(dataset)
-cascaded_dataset = CascadedDataset(dataset_list)
+    dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right', is_render_depth=False), split=dict(train=1.0))
+    test_dataset_list.append(dataset)
+cascaded_dataset = CascadedDataset(test_dataset_list)
 step_data = cascaded_dataset[0]
 
 predicted_action = policy.get_action(step_data)

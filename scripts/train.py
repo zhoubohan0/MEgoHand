@@ -131,17 +131,21 @@ def main(config: Config):
         video_backend=config.video_backend,
     )
     '''
-    dataset_name_list = [
+    train_dataset_name_list = [
         "hoi4d",  # zhan
         # "oakink2",  # zhan_4t 
     ]
-    dataset_list = []
-    for each in dataset_name_list:
-        dataset_name = each.upper()
-        dataset = eval(f"{dataset_name}Dataset")()
-        dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right', is_render_depth=False))
-        dataset_list.append(dataset)
-    train_dataset = CascadedDatasetWithTransform(dataset_list, transforms)
+    train_dataset_list, eval_dataset_list = [], []
+    for each in train_dataset_name_list:
+        train_dataset_name = each.upper()
+        train_dataset = eval(f"{train_dataset_name}Dataset")()
+        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=False), split=dict(train=0.95))
+        train_dataset_list.append(train_dataset)
+        eval_dataset = eval(f"{train_dataset_name}Dataset")()
+        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=False), split=dict(eval=0.95))
+        eval_dataset_list.append(eval_dataset)
+    train_dataset = CascadedDatasetWithTransform(train_dataset_list, transforms)
+    eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, transforms)
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
@@ -187,19 +191,23 @@ def main(config: Config):
         max_steps=config.max_steps,
         save_strategy="steps",
         save_steps=config.save_steps,
-        evaluation_strategy="no",
         save_total_limit=8,
         report_to=config.report_to,
         seed=42,
-        do_eval=False,
         ddp_find_unused_parameters=False,
         ddp_bucket_cap_mb=100,
         torch_compile_mode=None,
+        # eval
+        do_eval=True,
+        evaluation_strategy="steps",   # epoch
+        eval_steps=config.save_steps,  # when evaluation_strategy is "steps"
+        per_device_eval_batch_size=8,
     )
 
     # 2.2 run experiment
     experiment = TrainRunner(
         train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         model=model,
         training_args=training_args,
         resume_from_checkpoint=config.resume,
