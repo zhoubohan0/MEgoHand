@@ -1,1 +1,0 @@
-from .train_inv_mano import DirectInvMANOTrainer
