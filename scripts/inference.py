@@ -101,9 +101,10 @@ step_data["action.trans"] = np.zeros((16, 3), dtype=np.float32)
 step_data['annotation.human.action.task_description'] = ['pick the squash from the counter and place it in the plate']
 '''
 
-# dataset
+# TODO: dataset
 test_dataset_name_list = [
     "hoi4d",  # zhan
+    # "fpha",  # zhan
     # "oakink2",  # zhan_4t 
 ]
 test_dataset_list = []

@@ -14,30 +14,21 @@
 # limitations under the License.
 
 """
-Example command:
-
-python scripts/eval_policy.py --host localhost --port 5555 --plot
-    --modality_keys right_arm right_hand
-    --steps 250
-    --trajs 1000
+python scripts/test.py
     --action_horizon 16
-    --video_backend decord
     --dataset_path demo_data/robot_sim.PickNPlace/
-    --embodiment_tag gr1
     --data_config hand_motion
-provide --model_path to load up the model checkpoint in this script.
+provide --pretrain_ckpt to load up the model checkpoint in this script.
 """
 
 import argparse
 import warnings
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from gr00t.data.dataset import LeRobotSingleDataset
-# from gr00t.eval.robot import RobotInferenceClient
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
-from gr00t.model.policy import BasePolicy, MHMPolicy
+from gr00t.model.policy import MHMPolicy
 from gr00t.utils.util import glance_dict
 from mhmp_vis.dataset_loader import *
 from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist
@@ -67,18 +58,10 @@ def cal_metrics(pred, true):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="localhost", help="host")
-    parser.add_argument("--port", type=int, default=5555, help="port")
-    parser.add_argument("--plot", action="store_true", help="plot images")
-    parser.add_argument("--modality_keys", nargs="+", type=str, default=["right_arm", "right_hand"])
     parser.add_argument("--data_config", type=str, default="hand_motion", choices=list(DATA_CONFIG_MAP.keys()),help="data config name",)
-    parser.add_argument("--steps", type=int, default=150, help="number of steps to run")
-    parser.add_argument("--trajs", type=int, default=1, help="trajectories to run")
     parser.add_argument("--action_horizon", type=int, default=16)
-    parser.add_argument("--video_backend", type=str, default="decord")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--embodiment_tag", type=str, help="The embodiment tag for the model.", default="gr1", )
-    parser.add_argument("--model_path", type=str, default=None, help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",)
+    parser.add_argument("--pretrain_ckpt", type=str, default=None, help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",)
     args = parser.parse_args()
     # model
     data_config = DATA_CONFIG_MAP[args.data_config]
@@ -88,7 +71,7 @@ if __name__ == "__main__":
         model_cfg_path='model_config',
         modality_config=modality_config,
         modality_transform=modality_transform,
-        pretrain_ckpt=args.model_path,
+        pretrain_ckpt=args.pretrain_ckpt,
     )
     # test dataset
     test_dataset_name_list = [

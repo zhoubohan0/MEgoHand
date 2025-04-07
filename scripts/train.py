@@ -66,7 +66,7 @@ class Config:
     tune_llm: bool = False
     """Whether to fine-tune the language model backbone."""
 
-    tune_visual: bool = True
+    tune_visual: bool = False
     """Whether to fine-tune the vision tower."""
 
     tune_projector: bool = True
@@ -204,7 +204,8 @@ def main(config: Config):
         do_eval=True,
         evaluation_strategy="steps",   # epoch
         eval_steps=config.save_steps,  # when evaluation_strategy is "steps"
-        per_device_eval_batch_size=8,
+        per_device_eval_batch_size=config.batch_size,
+        label_names=["action"],
     )
 
     # 2.2 run experiment

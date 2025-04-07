@@ -74,7 +74,7 @@ class DualBrainTrainer(transformers.Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         outputs = model(inputs)
         loss = outputs["loss"]
-        return (loss, outputs) if return_outputs else loss
+        return (loss, dict(outputs)) if return_outputs else loss
 
     def create_optimizer(self):
         """
@@ -152,10 +152,11 @@ class DualBrainTrainer(transformers.Trainer):
             )
         return super().train(resume_from_checkpoint, trial, ignore_keys_for_eval, **kwargs)
 
+    '''
     def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):  # TODO: override
         return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
     
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):  # TODO: override
         # Custom preprocessing or model calls
         return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys)
-        
+    '''

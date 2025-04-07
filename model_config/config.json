@@ -2,7 +2,7 @@
   "action_dim": 99,
   "action_head_cfg": {
     "action_dim": 99,
-    "action_horizon": 2,
+    "action_horizon": 16,
     "add_pos_embed": true,
     "diffusion_model_cfg": {
       "attention_head_dim": 48,
@@ -30,7 +30,7 @@
     "tune_diffusion_model": true,
     "tune_projector": true
   },
-  "action_horizon": 2,
+  "action_horizon": 16,
   "architectures": [
     "GR00T_N1"
   ],

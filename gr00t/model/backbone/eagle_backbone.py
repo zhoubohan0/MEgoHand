@@ -92,9 +92,7 @@ class EagleBackbone(nn.Module):
         self.model = AutoModel.from_config(config, trust_remote_code=True)
         self.model.neftune_alpha = None
 
-        if hasattr(self.model.vision_model, "vision_model") and hasattr(
-            self.model.vision_model.vision_model, "head"
-        ):
+        if hasattr(self.model.vision_model, "vision_model") and hasattr(self.model.vision_model.vision_model, "head"):
             self.model.vision_model.vision_model.head = torch.nn.Identity()
 
         # remove parts of the LLM
