@@ -7,5 +7,6 @@ git push
 git remote add mhmp-vis https://github.com/zhoubohan0/MHMP-visualizer.git
 git fetch mhmp-vis
 git subtree add --prefix=mhmp_vis mhmp-vis master --squash
+git subtree pull --prefix=mhmp_vis mhmp-vis master --squash
 # mhmp-vis/dataset_loader and mhmp-vis/utils are used
 ```

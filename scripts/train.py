@@ -29,7 +29,7 @@ from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.experiment.runner import TrainRunner
 from gr00t.model.gr00t_n1 import GR00T_N1, GR00T_N1Config
 from gr00t.utils.peft import get_lora_model
-from dataset_loader import *
+from mhmp_vis.dataset_loader import *
 
 
 @dataclass

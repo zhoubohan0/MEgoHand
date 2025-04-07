@@ -6,7 +6,7 @@ from gr00t.data.dataset import LeRobotSingleDataset
 from gr00t.model.policy import MHMPolicy
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.utils.util import glance_dict
-from dataset_loader import *
+from mhmp_vis.dataset_loader import *
 
 # model
 data_config = DATA_CONFIG_MAP["hand_motion"]
