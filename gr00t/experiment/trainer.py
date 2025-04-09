@@ -73,7 +73,7 @@ class DualBrainTrainer(transformers.Trainer):
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         outputs = model(inputs)
-        loss = outputs["loss"]
+        loss = sum(outputs[k] for k in outputs if 'loss' in k)
         return (loss, dict(outputs)) if return_outputs else loss
 
     def create_optimizer(self):
@@ -91,7 +91,7 @@ class DualBrainTrainer(transformers.Trainer):
         if self.optimizer is None:
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            optimizer_grouped_parameters = [
+            optimizer_grouped_parameters = [  # requires_grad=True
                 {
                     "params": [
                         p
@@ -110,9 +110,7 @@ class DualBrainTrainer(transformers.Trainer):
                 },
             ]
 
-            optimizer_cls, optimizer_kwargs = transformers.Trainer.get_optimizer_cls_and_kwargs(
-                self.args
-            )
+            optimizer_cls, optimizer_kwargs = transformers.Trainer.get_optimizer_cls_and_kwargs(self.args)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
 
         return self.optimizer
@@ -151,12 +149,3 @@ class DualBrainTrainer(transformers.Trainer):
                 os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
             )
         return super().train(resume_from_checkpoint, trial, ignore_keys_for_eval, **kwargs)
-
-    '''
-    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):  # TODO: override
-        return super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
-    
-    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):  # TODO: override
-        # Custom preprocessing or model calls
-        return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys)
-    '''

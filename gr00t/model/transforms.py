@@ -287,6 +287,10 @@ class GR00TTransform(InvertibleModalityTransform):
                 for key in action_and_mask_keys
             ), f"Shape mismatch: {[(key, transformed_data[key].shape) for key in action_and_mask_keys]}"
 
+        # custom keys
+        keep_custom_keys = ['depth.ego_view', 'video.depthanything']
+        for key in keep_custom_keys:
+            transformed_data[key] = data[key]
         return transformed_data
 
     def apply_batch(self, data: dict, batch_size: int) -> dict:

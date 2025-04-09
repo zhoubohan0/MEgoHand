@@ -24,18 +24,22 @@ provide --pretrain_ckpt to load up the model checkpoint in this script.
 import argparse
 import warnings
 import numpy as np
+import torch
 # import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
-from gr00t.utils.util import glance_dict
+from gr00t.utils.util import default_collate_fn, mse, glance_dict
 from mhmp_vis.dataset_loader import *
 from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist
 
 warnings.simplefilter("ignore", category=FutureWarning)
 
 def cal_metrics(pred, true):
+    assert all(isinstance(pred[key], type(true[key])) for key in pred.keys()), "The keys of pred and true must be the same."
+    pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
+    true = {k: torch.as_tensor(v).cuda() for k, v in true.items()}
     '''
     pred = {
         action.theta: torch.Size([B, T, 90])
@@ -52,7 +56,7 @@ def cal_metrics(pred, true):
     return {
         'action.theta': rotmat_dist(rot6d_to_rotmat(pred['action.theta'].reshape(-1,6)),rot6d_to_rotmat(true['action.theta'].reshape(-1,6))).mean(),
         'action.rot': rotmat_dist(rot6d_to_rotmat(pred['action.rot'].reshape(-1,6)),rot6d_to_rotmat(true['action.rot'].reshape(-1,6))).mean(),
-        'action.trans': (pred['action.trans'] - true['action.trans']).pow(2).mean(),
+        'action.trans': mse(pred['action.trans'],true['action.trans']),
     }
 
 
@@ -85,7 +89,7 @@ if __name__ == "__main__":
         dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right'), split=dict(train=1.0))
         test_dataset_list.append(dataset)
     cascaded_dataset = CascadedDataset(test_dataset_list)
-    test_dataloader = DataLoader(cascaded_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
+    test_dataloader = DataLoader(cascaded_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False, collate_fn=default_collate_fn)
     print("Test dataset:", [str(each) for each in test_dataset_name_list])
     print("Total test samples:", len(cascaded_dataset))
     

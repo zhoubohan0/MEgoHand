@@ -378,6 +378,14 @@
                 ],
                 "channels": 3,
                 "fps": 20.0
+            },
+            "depthanything": {
+                "resolution": [
+                    256,
+                    256
+                ],
+                "channels": 3,
+                "fps": 20.0
             }
         },
         "state": {

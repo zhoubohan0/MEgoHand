@@ -72,7 +72,6 @@ class GR00T_N1(PreTrainedModel):
         EagleBackbone(backbone_cfg)
         "backbone_cfg": {
             "allow_reshape_visual": true,
-            "load_pretrained_det_eagle_path": null,
             "model_name": "$GR00T_BACKBONE_PATH/eagle2_hg_model",
             "processor_cfg": {
             "max_input_tiles": 1,
@@ -83,7 +82,6 @@ class GR00T_N1(PreTrainedModel):
             }
             },
             "projector_dim": 2048,
-            "remove_llm": false,
             "reproject_vision": false,
             "scale_image_resolution": 1,
             "select_layer": 12,
@@ -210,6 +208,7 @@ class GR00T_N1(PreTrainedModel):
         backbone_inputs, action_inputs = self.prepare_input(inputs)
         backbone_outputs = self.backbone(backbone_inputs)
         action_head_outputs = self.action_head(backbone_outputs, action_inputs)
+        action_head_outputs.update({k:v for k,v in backbone_outputs.items() if 'loss' in k})
         self.validate_data(action_head_outputs, backbone_outputs, is_training=True)
         return action_head_outputs
 

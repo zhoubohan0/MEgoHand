@@ -120,7 +120,7 @@ def main(config: Config):
     """Main training function."""
     # ------------ step 1: load dataset ------------
     data_config = DATA_CONFIG_MAP[config.data_config]
-    modality_configs = data_config.modality_config()  # TODO
+    # modality_configs = data_config.modality_config()
     '''
     train_dataset = LeRobotSingleDataset(
         dataset_path=config.dataset_path,
@@ -142,7 +142,7 @@ def main(config: Config):
         eval_dataset = eval(f"{train_dataset_name}Dataset")()
         eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(eval=0.95))
         eval_dataset_list.append(eval_dataset)
-    transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO
+    transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
     train_transforms = data_config.transform(split='train')
     train_transforms.set_metadata(transform_meta)
     train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
@@ -178,7 +178,7 @@ def main(config: Config):
         per_device_train_batch_size=config.batch_size,
         gradient_accumulation_steps=1,
         dataloader_pin_memory=True,
-        # TODO
+        # TODO: server
         dataloader_num_workers=0, #config.dataloader_num_workers,
         dataloader_persistent_workers=False,#True,
         optim="adamw_torch",
