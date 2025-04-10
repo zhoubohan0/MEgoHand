@@ -104,6 +104,7 @@ step_data['annotation.human.action.task_description'] = ['pick the squash from t
 # TODO: dataset
 test_dataset_name_list = [
     # "TACO", # zbh
+    # "Arctic", # zhan_4t 
     # "oakink2", # zhan_4t 
     # "H2O",  # zhan_4t 
     "hoi4d",  # zhan
