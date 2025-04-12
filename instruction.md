@@ -1,5 +1,9 @@
+Environment
+```bash
 pip install pydantic av numpydantic open3d natsort
-pull the entire repo MHMP-visualizer into a subfolder named mhmp_vis/, dataset_loader and utils are used
+```
+
+pull the entire repo MHMP-visualizer into a subfolder named mhmp_vis/
 ```bash
 # clean
 git rm -r mhmp_vis
@@ -17,3 +21,9 @@ git commit -m "Add MHMP-visualizer as submodule under mhmp_vis"
 git submodule update --init --recursive  # for first-time or after clone
 cd mhmp_vis # Edit and Push to Submodule (2-way sync) by add commit and push
 ```
+
+Prepare Dataset
+```bash
+python -m mhmp_vis.dataset_loader.dataset_fpha
+```
+

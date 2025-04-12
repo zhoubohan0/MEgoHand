@@ -130,17 +130,18 @@ def main(config: Config):
     )
     '''
     train_dataset_name_list = [
-        "hoi4d",  # zhan
-        # "oakink2",  # zhan_4t 
+        # "taco"
+        "fpha"
     ]
     train_dataset_list, eval_dataset_list = [], []
+    data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
     for each in train_dataset_name_list:
         train_dataset_name = each.upper()
         train_dataset = eval(f"{train_dataset_name}Dataset")()
-        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(train=0.95))
+        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.05))
         train_dataset_list.append(train_dataset)
         eval_dataset = eval(f"{train_dataset_name}Dataset")()
-        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(eval=0.95))
+        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(eval=0.95))
         eval_dataset_list.append(eval_dataset)
     transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
     train_transforms = data_config.transform(split='train')
@@ -239,7 +240,6 @@ if __name__ == "__main__":
     assert config.num_gpus <= available_gpus, f"Number of GPUs requested ({config.num_gpus}) is greater than the available GPUs ({available_gpus})"
     assert config.num_gpus > 0, "Number of GPUs must be greater than 0"
     print(f"Using {config.num_gpus} GPUs")
-
     if config.num_gpus == 1:
         # Single GPU mode - set CUDA_VISIBLE_DEVICES=0
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"

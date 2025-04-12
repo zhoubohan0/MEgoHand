@@ -718,8 +718,11 @@ class DepthAnythingTransform(ModalityTransform):
 '''
 
 class HandMotionDataConfig(BaseDataConfig):
+    # customize
+    is_render_depth = False
     side = 'right'
     action_horizon = 16
+
     video_keys = ["video.ego_view"]
     da_keys = ["video.depthanything"]
     state_keys = [  # 109
