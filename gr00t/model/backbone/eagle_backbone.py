@@ -28,8 +28,6 @@ from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificV
 from .depth_anything_v2.dpt import DepthAnythingV2
 DEFAULT_EAGLE_MODEL_NAME = os.path.join(os.path.dirname(gr00t.__file__), "model", "backbone", "eagle2_hg_model")
 
-PRETRAIN_PATH = '/mnt/vepfs/zbh/backup/pretrain/'
-
 class DepthEncoder(nn.Module):
     def __init__(self):
         super(DepthEncoder, self).__init__()
@@ -106,6 +104,8 @@ class EagleBackbone(nn.Module):
         projector_dim: int = -1,
         allow_reshape_visual: bool = True,
         use_local_eagle_hg_model: bool = True,
+        # customize
+        depthanything_path: str = "",  
     ):
         super().__init__()
         # load local eagle model and set property
@@ -125,11 +125,10 @@ class EagleBackbone(nn.Module):
         }
         depth_anything_encoder_type = 'vitl'
         self.depth_anything_model = DepthAnythingV2(**model_configs[depth_anything_encoder_type])
-        self.depth_anything_model.load_state_dict(torch.load(PRETRAIN_PATH + f'depth_anything_v2/depth_anything_v2_{depth_anything_encoder_type}.pth', map_location='cpu'))
+        self.depth_anything_model.load_state_dict(torch.load(os.path.join(depthanything_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth'), map_location='cpu'))
         # TODO: finetune depth anything
         for param in self.depth_anything_model.parameters():
             param.requires_grad = False
-
 
         # cutomize: depth encoder
         self.depth_encoder = DepthEncoder()

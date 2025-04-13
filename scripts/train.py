@@ -34,10 +34,11 @@ from mhmp_vis.dataset_loader import *
 
 @dataclass
 class Config:
-    """Configuration for GR00T model fine-tuning."""
+    # customize
+    depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
 
     # Dataset parameters
-    dataset_path: str = 'demo_data/robot_sim.PickNPlace'
+    dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
     """Path to the dataset directory."""
 
     output_dir: str = "logs"
@@ -132,16 +133,17 @@ def main(config: Config):
     train_dataset_name_list = [
         # "taco"
         "fpha"
+        # "hoi4d"
     ]
     train_dataset_list, eval_dataset_list = [], []
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
     for each in train_dataset_name_list:
         train_dataset_name = each.upper()
-        train_dataset = eval(f"{train_dataset_name}Dataset")()
-        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.05))
+        train_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
+        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.01))
         train_dataset_list.append(train_dataset)
-        eval_dataset = eval(f"{train_dataset_name}Dataset")()
-        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(eval=0.95))
+        eval_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
+        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(eval=0.99))
         eval_dataset_list.append(eval_dataset)
     transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
     train_transforms = data_config.transform(split='train')
@@ -153,6 +155,7 @@ def main(config: Config):
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
+    model_config.update({"depthanything_path": config.depthanything_path}) # additional depthanything_v2 path
     model = GR00T_N1(GR00T_N1Config(**model_config),"")
     model.backbone.set_trainable_parameters(tune_visual=config.tune_visual, tune_llm=config.tune_llm)
     model.action_head.set_trainable_parameters(tune_projector=config.tune_projector, tune_diffusion_model=config.tune_diffusion_model)

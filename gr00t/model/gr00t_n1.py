@@ -125,6 +125,7 @@ class GR00T_N1(PreTrainedModel):
         assert isinstance(config.action_head_cfg, dict)
         super().__init__(config)
         self.local_model_path = local_model_path
+        config.backbone_cfg['depthanything_path'] = config.depthanything_path
         self.backbone = EagleBackbone(**config.backbone_cfg)
         self.action_head = FlowmatchingActionHead(FlowmatchingActionHeadConfig(**config.action_head_cfg))
         # seem unnecessary
