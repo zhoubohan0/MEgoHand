@@ -16,7 +16,7 @@
 import os, json
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
@@ -36,6 +36,7 @@ from mhmp_vis.dataset_loader import *
 class Config:
     # customize
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
+    dataset_list: list = field(default_factory=list)
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -98,7 +99,7 @@ class Config:
     lora_dropout: float = 0.1
     """Dropout rate for the LORA model."""
 
-    dataloader_num_workers: int = 8
+    dataloader_num_workers: int = 0  # TODO:8
     """Number of workers for data loading."""
 
     report_to: str = "tensorboard"
@@ -129,15 +130,16 @@ def main(config: Config):
         transforms=transforms,
         video_backend=config.video_backend,
     )
-    '''
     train_dataset_name_list = [
         # "taco"
         "fpha"
         # "hoi4d"
     ]
+    '''
+
     train_dataset_list, eval_dataset_list = [], []
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
-    for each in train_dataset_name_list:
+    for each in config.dataset_list:
         train_dataset_name = each.upper()
         train_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
         train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.01))
@@ -183,7 +185,7 @@ def main(config: Config):
         gradient_accumulation_steps=1,
         dataloader_pin_memory=True,
         # TODO: server
-        dataloader_num_workers=0, #config.dataloader_num_workers,
+        dataloader_num_workers=config.dataloader_num_workers,
         dataloader_persistent_workers=False,#True,
         optim="adamw_torch",
         adam_beta1=0.95,
