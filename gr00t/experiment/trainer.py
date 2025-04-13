@@ -80,8 +80,8 @@ class DualBrainTrainer(transformers.Trainer):
         depth.ego_view: (B, 1, 1, 256, 256)
         video.depthanything: (B, 1, 3, 518, 518)
         '''
-        breakpoint()
         outputs = model(inputs)
+        print(outputs)
         loss = sum(outputs[k] for k in outputs if 'loss' in k)
         return (loss, dict(outputs)) if return_outputs else loss
 
