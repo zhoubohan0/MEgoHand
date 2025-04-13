@@ -99,7 +99,7 @@ class Config:
     lora_dropout: float = 0.1
     """Dropout rate for the LORA model."""
 
-    dataloader_num_workers: int = 0  # TODO:8
+    dataloader_num_workers: int = 8
     """Number of workers for data loading."""
 
     report_to: str = "tensorboard"

@@ -229,6 +229,7 @@ def prepare(
     IMG_END_TOKEN="</img>",
     IMG_CONTEXT_TOKEN="<IMG_CONTEXT>",
     llm_only=False,
+    max_token_length=120
 ):
     if history is None and pixel_values is not None and "<image>" not in question:
         question = "<image>\n" + question
@@ -254,13 +255,35 @@ def prepare(
             + IMG_CONTEXT_TOKEN * model_spec.num_image_token * num_patches
             + IMG_END_TOKEN
         )
-        if llm_only:
-            query = query.replace("<image>", "", 1)
-        else:
-            query = query.replace("<image>", image_tokens, 1)
+        query = query.replace("<image>", "", 1) if llm_only else query.replace("<image>", image_tokens, 1)
 
-    model_inputs = tokenizer(query, return_tensors="pt")
-
+    model_inputs = tokenizer(
+        query, 
+        return_tensors="pt",
+        # padding=True,  # Automatically pad to the longest sequence in the batch
+        # truncation=True,  # Ensure the input is truncated to the max length allowed by the model
+        # max_length=150,  # Optionally set a maximum length
+    )
+    '''
+    1: <|im_start|>
+    2: <pad>
+    30: .
+    198: \n
+    '''
+    # find the last padding_token in model_inputs["input_ids"]
+    padding_token = tokenizer.pad_token_id
+    text_pad_pos = torch.where(model_inputs["input_ids"] == padding_token)[1][-1]
+    # customize: manually pad
+    if max_token_length < text_pad_pos:
+        raise ValueError(
+            f"max_token_length {max_token_length} is smaller than text_pad_pos {text_pad_pos}"
+        )
+    B, T = model_inputs["input_ids"].shape
+    model_inputs["attention_mask"] = torch.ones(B, max_token_length, dtype=torch.int64)
+    model_inputs["input_ids_pad"] = torch.ones(B, max_token_length, dtype=torch.int64) * padding_token
+    model_inputs["input_ids_pad"][:, :text_pad_pos], model_inputs["input_ids_pad"][:, text_pad_pos-T:] = model_inputs["input_ids"][:, :text_pad_pos], model_inputs["input_ids"][:, text_pad_pos-T:]
+    model_inputs["input_ids"] = model_inputs["input_ids_pad"]
+    del model_inputs["input_ids_pad"]
     return (
         pixel_values,
         model_inputs["input_ids"],
@@ -337,7 +360,7 @@ class EagleProcessor:
         eos_token_id = self.tokenizer.convert_tokens_to_ids(template.sep)
         return eos_token_id
 
-    def prepare_input(self, params):
+    def prepare_input(self, params, max_token_length):
         system_message = params["prompt"][0]["content"]
         send_messages = params["prompt"][1:]
         max_input_tiles = self.max_input_tiles
@@ -426,6 +449,7 @@ class EagleProcessor:
             pixel_values=pixel_values,
             question=question,
             history=history,
+            max_token_length=max_token_length,
         )
         data = {
             "pixel_values": pixel_values,

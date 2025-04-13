@@ -25,7 +25,7 @@ from gr00t.data.schema import DatasetMetadata, EmbodimentTag
 from gr00t.data.transform.base import InvertibleModalityTransform
 from gr00t.model.backbone.eagle2_hg_model.inference_eagle_repo import EagleProcessor
 
-DEFAULT_SYSTEM_MESSAGE = "You are a helpful assistant."
+DEFAULT_SYSTEM_MESSAGE = "You are a helpful assistant."  # TODO
 EAGLE_KEYS = ["pixel_values", "input_ids", "attention_mask"]
 
 
@@ -164,7 +164,7 @@ class GR00TTransform(InvertibleModalityTransform):
                 "image": images,
             },
         ]
-        inputs = self.vlm_processor.prepare_input({"prompt": prompt})
+        inputs = self.vlm_processor.prepare_input({"prompt": prompt}, max_token_length=120)
         return inputs  # get image-text token id and attention mask
 
     def _prepare_video(self, data: dict):

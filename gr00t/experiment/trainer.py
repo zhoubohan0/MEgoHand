@@ -72,6 +72,15 @@ class DualBrainTrainer(transformers.Trainer):
         return BaseSampler(eval_dataset, shuffle=False)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        '''
+        state: (B, 1, 109)
+        action: (B, 16, 99)
+        pixel_values: (B, 1, 3, 224, 224)
+        input_ids: (B, 1, 120)
+        depth.ego_view: (B, 1, 1, 256, 256)
+        video.depthanything: (B, 1, 3, 518, 518)
+        '''
+        breakpoint()
         outputs = model(inputs)
         loss = sum(outputs[k] for k in outputs if 'loss' in k)
         return (loss, dict(outputs)) if return_outputs else loss

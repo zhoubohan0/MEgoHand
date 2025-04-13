@@ -29,7 +29,7 @@ done
 
 # echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}"
 
-python -m pdb -m scripts.train \
+CUDA_VISIBLE_DEVICES=0 python -m pdb -m scripts.train \
   --dataset_path "$dataset_path" \
   --depthanything_path "$depthanything_path" \
   ${dataset_list[@]:+--dataset_list ${dataset_list[@]}}

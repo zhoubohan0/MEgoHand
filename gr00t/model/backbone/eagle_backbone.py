@@ -226,7 +226,6 @@ class EagleBackbone(nn.Module):
         plt.savefig("depth_cmp.png")
         breakpoint()
         '''
-        depth_loss = mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
         
         embeddings = get_embeddings(
             self.model,
@@ -238,6 +237,6 @@ class EagleBackbone(nn.Module):
             data={
                 "backbone_features": self.linear(embeddings),           # [B, T2, hidden_size]
                 "backbone_attention_mask": vl_input["attention_mask"],
-                "depth_loss": depth_loss
+                # "depth_loss": mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
             }
         )  
