@@ -38,6 +38,7 @@ class Config:
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: list = field(default_factory=list)
     exp_name: str = "runs"
+    incorporate_depth: int = 0
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -50,7 +51,7 @@ class Config:
     """Data configuration name from DATA_CONFIG_MAP."""
 
     # Training parameters
-    batch_size: int = 1
+    batch_size: int = 8
     """Batch size per GPU for training."""
 
     max_steps: int = 10000
@@ -143,10 +144,11 @@ def main(config: Config):
     for each in config.dataset_list:
         train_dataset_name = each.upper()
         train_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
-        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.01))
+        # TODO: filter TACO task list
+        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.95)) 
         train_dataset_list.append(train_dataset)
         eval_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
-        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(eval=0.99))
+        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(eval=0.95))
         eval_dataset_list.append(eval_dataset)
     transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
     train_transforms = data_config.transform(split='train')
@@ -158,7 +160,11 @@ def main(config: Config):
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
-    model_config.update({"depthanything_path": config.depthanything_path}) # additional depthanything_v2 path
+    # customize
+    model_config.update({
+        "depthanything_path": config.depthanything_path,
+        "incorporate_depth": config.incorporate_depth,
+    })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")
     model.backbone.set_trainable_parameters(tune_visual=config.tune_visual, tune_llm=config.tune_llm)
     model.action_head.set_trainable_parameters(tune_projector=config.tune_projector, tune_diffusion_model=config.tune_diffusion_model)
@@ -175,7 +181,7 @@ def main(config: Config):
 
     # 2.1 modify training args
     training_args = TrainingArguments(
-        output_dir=config.output_dir,
+        output_dir=os.path.join(config.output_dir, config.exp_name),
         run_name=None,
         remove_unused_columns=False,
         deepspeed="",
@@ -216,7 +222,6 @@ def main(config: Config):
 
     # 2.2 run experiment
     experiment = TrainRunner(
-        config.exp_name,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         model=model,

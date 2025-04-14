@@ -50,7 +50,7 @@ class DepthEncoder(nn.Module):
 def get_embeddings(
     self,
     reproject_vision: bool,
-    depth_feature,
+    depth_feature=None,
     pixel_values=None,
     input_ids=None,
     attention_mask=None,
@@ -61,7 +61,7 @@ def get_embeddings(
     pixel_values, input_ids, attention_mask = pixel_values.squeeze(1), input_ids.squeeze(1), attention_mask.squeeze(1)  # avoid additional batch dim
     vit_embeds = self.extract_feature(pixel_values)  # [B, 3, 224, 224] -> [B, 64, 2048]
     # pooling visual feature and depth feature
-    visual_embeds = (depth_feature + vit_embeds)
+    visual_embeds = (depth_feature + vit_embeds) if depth_feature is not None else vit_embeds
 
     ## get language embeddings, then overwrite some with visual embeddings
     # 1. get input embeddings
@@ -106,6 +106,7 @@ class EagleBackbone(nn.Module):
         use_local_eagle_hg_model: bool = True,
         # customize
         depthanything_path: str = "",  
+        incorporate_depth: bool = False,
     ):
         super().__init__()
         # load local eagle model and set property
@@ -115,6 +116,7 @@ class EagleBackbone(nn.Module):
         self.model = AutoModel.from_config(config, trust_remote_code=True)
         self.model.neftune_alpha = None
         self.reproject_vision = reproject_vision
+        self.incorporate_depth = incorporate_depth
 
         # cutomize: depth-anything model
         if os.path.exists(depthanything_path):
@@ -214,8 +216,11 @@ class EagleBackbone(nn.Module):
         '''
         # Set frozen module to eval
         self.set_frozen_modules_to_eval_mode()
-        depth_true = vl_input["depth.ego_view"].squeeze(1)  # (B, 1, H, W)
-        depth_feature=self.depth_encoder(depth_true)        # (B, 64, 2048), or self.depth_encoder(depth_pred_rescale)
+        if self.incorporate_depth:
+            depth_true = vl_input["depth.ego_view"].squeeze(1)  # (B, 1, H, W)
+            depth_feature=self.depth_encoder(depth_true)        # (B, 64, 2048), or self.depth_encoder(depth_pred_rescale)
+        else:
+            depth_feature = None
         embeddings = get_embeddings(
             self.model,
             self.reproject_vision,
@@ -231,7 +236,6 @@ class EagleBackbone(nn.Module):
             depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1))
             depth_pred_rescale = resize(depth_to1(depth_pred))  # clip, to1 (TODO: reletive (x - x.min()) / (x.max() - x.min()))
             vlm_output["depth_loss"] = mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
-        
             '''
             # visualization
             import matplotlib.pyplot as plt

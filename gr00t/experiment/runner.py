@@ -31,7 +31,6 @@ from gr00t.utils.experiment import CheckpointFormatCallback, safe_save_model_for
 class TrainRunner:
     def __init__(
         self,
-        exp_name,
         model: GR00T_N1,
         training_args: TrainingArguments,
         train_dataset,
@@ -92,7 +91,7 @@ class TrainRunner:
                 )
             training_args.report_to = ["wandb"]
         else:  # Default to tensorboard
-            tensorboard_dir = Path(training_args.output_dir) / exp_name
+            tensorboard_dir = Path(training_args.output_dir)
             tensorboard_dir.mkdir(parents=True, exist_ok=True)
             print(f"TensorBoard logs will be saved to: {tensorboard_dir}")
             training_args.report_to = ["tensorboard"]
