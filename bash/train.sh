@@ -3,6 +3,7 @@
 dataset_path="/mnt/vepfs/zbh/MHMP/datasets/"
 depthanything_path="/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
 dataset_list=()  # Initialize as empty array, separate by comma
+exp_name="runs"    
 
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -27,9 +28,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}"
+# echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}, exp_name: $exp_name"
 
 CUDA_VISIBLE_DEVICES=0 python -m pdb -m scripts.train \
   --dataset_path "$dataset_path" \
   --depthanything_path "$depthanything_path" \
+  --exp_name "$exp_name" \
   ${dataset_list[@]:+--dataset_list ${dataset_list[@]}}

@@ -117,18 +117,21 @@ class EagleBackbone(nn.Module):
         self.reproject_vision = reproject_vision
 
         # cutomize: depth-anything model
-        model_configs = {
-            'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
-            'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-            'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-            'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
-        }
-        depth_anything_encoder_type = 'vitl'
-        self.depth_anything_model = DepthAnythingV2(**model_configs[depth_anything_encoder_type])
-        self.depth_anything_model.load_state_dict(torch.load(os.path.join(depthanything_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth'), map_location='cpu'))
-        # TODO: finetune depth anything
-        for param in self.depth_anything_model.parameters():
-            param.requires_grad = False
+        if os.path.exists(depthanything_path):
+            depth_anything_model_configs = {
+                'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+                'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
+                'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
+                'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
+            }
+            depth_anything_encoder_type = 'vitl'
+            self.depth_anything_model = DepthAnythingV2(**depth_anything_model_configs[depth_anything_encoder_type])
+            self.depth_anything_model.load_state_dict(torch.load(os.path.join(depthanything_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth'), map_location='cpu'))
+            # TODO: finetune depth anything
+            for param in self.depth_anything_model.parameters():
+                param.requires_grad = False
+        else:
+            self.depth_anything_model = None
 
         # cutomize: depth encoder
         self.depth_encoder = DepthEncoder()
@@ -211,32 +214,33 @@ class EagleBackbone(nn.Module):
         '''
         # Set frozen module to eval
         self.set_frozen_modules_to_eval_mode()
-        depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1))
-        depth_pred_rescale = resize(depth_to1(depth_pred))  # clip, to1 (TODO: reletive (x - x.min()) / (x.max() - x.min()))
         depth_true = vl_input["depth.ego_view"].squeeze(1)  # (B, 1, H, W)
-        depth_feature=self.depth_encoder(depth_true)        # (B, 64, 2048)
-        # depth_feature=self.depth_encoder(depth_pred_rescale)# (B, 64, 2048)
-        '''
-        # visualization
-        import matplotlib.pyplot as plt
-        import torch
-        torch.save([depth_pred_rescale, depth_true], "depth.pt")
-        plt.imshow(torch.cat([depth_pred_rescale, depth_true], dim=-1).detach().squeeze().cpu().numpy(), cmap='viridis')
-        plt.axis('off')
-        plt.savefig("depth_cmp.png")
-        breakpoint()
-        '''
-        
+        depth_feature=self.depth_encoder(depth_true)        # (B, 64, 2048), or self.depth_encoder(depth_pred_rescale)
         embeddings = get_embeddings(
             self.model,
             self.reproject_vision,
             **{k:v for k,v in vl_input.items() if k in EAGLE_KEYS},
             depth_feature=depth_feature,
         )
-        return BatchFeature(
-            data={
-                "backbone_features": self.linear(embeddings),           # [B, T2, hidden_size]
-                "backbone_attention_mask": vl_input["attention_mask"],
-                # "depth_loss": mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
-            }
-        )  
+        vlm_output = {
+            "backbone_features": self.linear(embeddings),           # [B, T2, hidden_size]
+            "backbone_attention_mask": vl_input["attention_mask"],
+        }
+        
+        if self.depth_anything_model is not None: # depth estimation
+            depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1))
+            depth_pred_rescale = resize(depth_to1(depth_pred))  # clip, to1 (TODO: reletive (x - x.min()) / (x.max() - x.min()))
+            vlm_output["depth_loss"] = mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
+        
+            '''
+            # visualization
+            import matplotlib.pyplot as plt
+            import torch
+            torch.save([depth_pred_rescale, depth_true], "depth.pt")
+            plt.imshow(torch.cat([depth_pred_rescale, depth_true], dim=-1).detach().squeeze().cpu().numpy(), cmap='viridis')
+            plt.axis('off')
+            plt.savefig("depth_cmp.png")
+            breakpoint()
+            '''
+        
+        return BatchFeature(data=vlm_output)  

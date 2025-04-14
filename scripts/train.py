@@ -37,6 +37,7 @@ class Config:
     # customize
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: list = field(default_factory=list)
+    exp_name: str = "runs"
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -68,7 +69,7 @@ class Config:
     tune_llm: bool = False
     """Whether to fine-tune the language model backbone."""
 
-    tune_visual: bool = False
+    tune_visual: bool = True
     """Whether to fine-tune the vision tower."""
 
     tune_projector: bool = True
@@ -184,9 +185,8 @@ def main(config: Config):
         per_device_train_batch_size=config.batch_size,
         gradient_accumulation_steps=1,
         dataloader_pin_memory=True,
-        # TODO: server
         dataloader_num_workers=config.dataloader_num_workers,
-        dataloader_persistent_workers=False,#True,
+        dataloader_persistent_workers=True,
         optim="adamw_torch",
         adam_beta1=0.95,
         adam_beta2=0.999,
@@ -216,6 +216,7 @@ def main(config: Config):
 
     # 2.2 run experiment
     experiment = TrainRunner(
+        config.exp_name,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         model=model,

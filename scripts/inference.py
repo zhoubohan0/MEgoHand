@@ -101,7 +101,6 @@ step_data["action.trans"] = np.zeros((16, 3), dtype=np.float32)
 step_data['annotation.human.action.task_description'] = ['pick the squash from the counter and place it in the plate']
 '''
 
-# TODO: dataset
 test_dataset_name_list = [
     # "TACO",       # zbh (135G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/ZBH/dataset/TACO/TACO-overall' -t /mnt/vepfs/zbh/MHMP/datasets/TACO -e "./2D_Segmentation.zip ./README.md"
     # "Arctic",     # zhan_4t (600G) 

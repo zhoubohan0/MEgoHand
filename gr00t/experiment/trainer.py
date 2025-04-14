@@ -81,7 +81,6 @@ class DualBrainTrainer(transformers.Trainer):
         video.depthanything: (B, 1, 3, 518, 518)
         '''
         outputs = model(inputs)
-        print(outputs)
         loss = sum(outputs[k] for k in outputs if 'loss' in k)
         return (loss, dict(outputs)) if return_outputs else loss
 
