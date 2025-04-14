@@ -27,3 +27,15 @@ Prepare Dataset
 python -m mhmp_vis.dataset_loader.dataset_fpha
 ```
 
+Calculate Statistics
+```bash
+bash bash/statistics.sh -dataset_list taco
+```
+
+Training
+```bash
+# MHMP
+bash bash/train.sh -dataset_list taco -depthanything_path "" -incorporate_depth 0 -exp_name RGB 
+# MHMP+
+
+```
