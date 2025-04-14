@@ -154,6 +154,10 @@ def main(config: Config):
     train_transforms = data_config.transform(split='train')
     train_transforms.set_metadata(transform_meta)
     train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
+    # overwrite with calculate statistics
+    statistics = train_dataset.calculate_statistics()
+    
+
     eval_transforms = data_config.transform(split='eval')
     eval_transforms.set_metadata(transform_meta)
     eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, eval_transforms)

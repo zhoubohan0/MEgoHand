@@ -38,7 +38,7 @@ done
 
 # echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, incorporate_depth: $incorporate_depth"
 
-CUDA_VISIBLE_DEVICES=0 python -m scripts.calculate_statistics \
+CUDA_VISIBLE_DEVICES=0 python -m pdb -m scripts.calculate_statistics \
   --dataset_path "$dataset_path" \
   --depthanything_path "$depthanything_path" \
   --exp_name "$exp_name" \
