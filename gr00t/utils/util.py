@@ -13,6 +13,9 @@ def resize(x, size=(256,256)):
     return F.interpolate(x[:, None], size, mode="bilinear", align_corners=True)
 
 def default_collate_fn(features: list[dict], **kwargs) -> dict:
+    '''
+    list[dict] -> dict[Tensor]
+    '''
     batch = {}
     keys = features[0].keys()
     for key in keys:  # ['video.ego_view', 'depth.ego_view', 'state.theta', 'state.beta', 'state.rot', 'state.trans', 'action.theta', 'action.rot', 'action.trans', 'annotation.human.action.task_description', 'video.depthanything']
