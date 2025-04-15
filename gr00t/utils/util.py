@@ -2,6 +2,42 @@ from huggingface_hub import snapshot_download
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.jit as jit
+
+class RunningMeanStdMinMax(jit.ScriptModule):
+    def __init__(self, shape=(), device='cuda'):
+        super(RunningMeanStdMinMax, self).__init__()
+        self.register_buffer('mean', torch.zeros(shape, dtype=torch.float32).to(device))  # μ
+        self.register_buffer('var', torch.ones(shape, dtype=torch.float32).to(device))    # σ^2, biased
+        self.register_buffer('min', torch.inf * torch.ones(shape, dtype=torch.float32).to(device))    # min
+        self.register_buffer('max', -torch.inf * torch.ones(shape, dtype=torch.float32).to(device))    # max
+        self.register_buffer('n', torch.tensor(0, dtype=torch.float32).to(device))        # n
+
+    @jit.script_method
+    def update(self, x: torch.Tensor):
+        batch_mean = torch.mean(x, dim=0)
+        batch_var = torch.var(x, dim=0, unbiased=False)
+        batch_n = x.shape[0]
+
+        delta = batch_mean - self.mean
+        total_n = self.n + batch_n
+
+        self.mean = self.mean + delta * batch_n / total_n
+        self.var = (self.var * self.n + batch_var * batch_n + torch.square(delta) * self.n * batch_n / total_n) / total_n
+        self.n = total_n
+
+        self.min = torch.minimum(self.min, torch.min(x, dim=0).values)
+        self.max = torch.maximum(self.max, torch.max(x, dim=0).values)
+
+
+    @jit.script_method
+    def get(self,):
+        return {
+            'mean':self.mean, 
+            'std':self.var.sqrt(),
+            'min':self.min,
+            'max':self.max
+        }
 
 def depth_to1(x, max_depth=1500):
     return x.clip(0, max_depth) / max_depth

@@ -120,13 +120,13 @@ def main(config: Config):
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
     for each in config.dataset_list:
         dataset_name = each.upper()
-        dataset = eval(f"{dataset_name}Dataset")(os.path.join(config.dataset_path, dataset_name))
+        dataset = eval(f"{dataset_name}Dataset")(os.path.join(config.dataset_path, dataset_name+'-overall'), True)
         dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), data_storage_kwargs, split=dict(train=1.0))
         statistics_dataset_list.append(dataset)
     
     cascaded_dataset = CascadedDataset(statistics_dataset_list)
-    statistics = cascaded_dataset.calculate_statistics(num_workers=8)
-
+    # statistics = cascaded_dataset.calculate_statistics(num_workers=8)
+    statistics = cascaded_dataset.calculate_running_statistics(batch_size=1024, num_workers=8)
     metadata_json = 'model_config/metadata.json'
     with open(metadata_json, "r") as f:
         metadata = json.load(f)
