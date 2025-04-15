@@ -39,6 +39,7 @@ class Config:
     dataset_list: list = field(default_factory=list)
     exp_name: str = "runs"
     incorporate_depth: int = 0
+    debug: int = 0
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -142,12 +143,13 @@ def main(config: Config):
     train_dataset_list, eval_dataset_list = [], []
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
     for each in config.dataset_list:
-        train_dataset_name = each.upper()
-        train_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
-        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.95)) 
+        train_class_name = each.upper()
+        train_dataset_name = train_class_name + '-overall' if config.debug and 'TACO' in train_class_name else train_class_name
+        train_dataset = eval(f"{train_class_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name), debug=config.debug)
+        train_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(train=0.95)) 
         train_dataset_list.append(train_dataset)
-        eval_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
-        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(eval=0.95))
+        eval_dataset = eval(f"{train_class_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name), debug=config.debug)
+        eval_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(eval=0.95))
         eval_dataset_list.append(eval_dataset)
     transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
     train_transforms = data_config.transform(split='train')
@@ -190,8 +192,8 @@ def main(config: Config):
         per_device_train_batch_size=config.batch_size,
         gradient_accumulation_steps=1,
         dataloader_pin_memory=True,
-        dataloader_num_workers=config.dataloader_num_workers,
-        dataloader_persistent_workers=True,
+        dataloader_num_workers=config.dataloader_num_workers if not config.debug else 0,
+        dataloader_persistent_workers=not config.debug,
         optim="adamw_torch",
         adam_beta1=0.95,
         adam_beta2=0.999,
