@@ -144,7 +144,6 @@ def main(config: Config):
     for each in config.dataset_list:
         train_dataset_name = each.upper()
         train_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
-        # TODO: filter TACO task list
         train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), data_storage_kwargs, split=dict(train=0.95)) 
         train_dataset_list.append(train_dataset)
         eval_dataset = eval(f"{train_dataset_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name))
@@ -154,10 +153,6 @@ def main(config: Config):
     train_transforms = data_config.transform(split='train')
     train_transforms.set_metadata(transform_meta)
     train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
-    # overwrite with calculate statistics
-    statistics = train_dataset.calculate_statistics()
-    
-
     eval_transforms = data_config.transform(split='eval')
     eval_transforms.set_metadata(transform_meta)
     eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, eval_transforms)

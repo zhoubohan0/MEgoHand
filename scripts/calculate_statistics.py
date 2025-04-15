@@ -121,7 +121,6 @@ def main(config: Config):
     for each in config.dataset_list:
         dataset_name = each.upper()
         dataset = eval(f"{dataset_name}Dataset")(os.path.join(config.dataset_path, dataset_name))
-        # TODO: filter TACO task list
         dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), data_storage_kwargs, split=dict(train=1.0))
         statistics_dataset_list.append(dataset)
     

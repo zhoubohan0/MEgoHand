@@ -22,20 +22,4 @@ git submodule update --init --recursive  # for first-time or after clone
 cd mhmp_vis # Edit and Push to Submodule (2-way sync) by add commit and push
 ```
 
-Prepare Dataset
-```bash
-python -m mhmp_vis.dataset_loader.dataset_fpha
-```
 
-Calculate Statistics
-```bash
-bash bash/statistics.sh -dataset_list taco
-```
-
-Training
-```bash
-# MHMP
-bash bash/train.sh -dataset_list taco -depthanything_path "" -incorporate_depth 0 -exp_name RGB 
-# MHMP+
-
-```
