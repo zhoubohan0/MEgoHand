@@ -36,7 +36,10 @@ class RunningMeanStdMinMax(jit.ScriptModule):
             'mean':self.mean, 
             'std':self.var.sqrt(),
             'min':self.min,
-            'max':self.max
+            'max':self.max,
+            # ignore
+            'q01':self.min + (self.max - self.min) * 0.01,
+            'q99':self.min + (self.max - self.min) * 0.99,
         }
 
 def depth_to1(x, max_depth=1500):

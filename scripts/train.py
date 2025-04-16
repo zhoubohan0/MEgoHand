@@ -36,10 +36,11 @@ from mhmp_vis.dataset_loader import *
 class Config:
     # customize
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
-    dataset_list: list = field(default_factory=list)
+    dataset_list: str = ""
     exp_name: str = "runs"
     incorporate_depth: int = 0
     debug: int = 0
+    split_portion: float = 0.95
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -142,22 +143,24 @@ def main(config: Config):
 
     train_dataset_list, eval_dataset_list = [], []
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
-    for each in config.dataset_list:
+    for each in config.dataset_list.split(','):
         train_class_name = each.upper()
-        train_dataset_name = train_class_name + '-overall' if config.debug and 'TACO' in train_class_name else train_class_name
+        train_dataset_name = train_class_name if config.debug and 'TACO' in train_class_name else train_class_name
         train_dataset = eval(f"{train_class_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name), debug=config.debug)
-        train_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(train=0.95)) 
+        train_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(train=config.split_portion)) 
         train_dataset_list.append(train_dataset)
         eval_dataset = eval(f"{train_class_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name), debug=config.debug)
-        eval_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(eval=0.95))
+        eval_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(eval=config.split_portion))
         eval_dataset_list.append(eval_dataset)
     transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
     train_transforms = data_config.transform(split='train')
     train_transforms.set_metadata(transform_meta)
     train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
+    print(f'Use {len(train_dataset)} samples for training')
     eval_transforms = data_config.transform(split='eval')
     eval_transforms.set_metadata(transform_meta)
     eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, eval_transforms)
+    print(f'Use {len(eval_dataset)} samples for evaluation')
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
@@ -246,7 +249,6 @@ if __name__ == "__main__":
         print(f"{key}: {value}")
     print("=" * 50 + "\n")
 
-
     # Validate GPU configuration
     available_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     assert config.num_gpus <= available_gpus, f"Number of GPUs requested ({config.num_gpus}) is greater than the available GPUs ({available_gpus})"
@@ -273,7 +275,7 @@ if __name__ == "__main__":
                 "--standalone",
                 f"--nproc_per_node={config.num_gpus}",
                 "--nnodes=1",  # default to 1 node for now
-                str(script_path),
+                "-m", "scripts.train"  # str(script_path),
             ]
 
             # Convert config to command line arguments
