@@ -233,7 +233,7 @@ class GR00T_N1(PreTrainedModel):
         self.validate_inputs(inputs)
         backbone_inputs = self.backbone.prepare_input(inputs)
         action_inputs = self.action_head.prepare_input(inputs)
-        # learn!
+        breakpoint()
         to_device_with_maybe_dtype = lambda x: x.to(self.device, dtype=self.action_head.dtype) if torch.is_floating_point(x) else x.to(self.device)
         backbone_inputs = tree.map_structure(to_device_with_maybe_dtype, backbone_inputs)
         action_inputs = tree.map_structure(to_device_with_maybe_dtype, action_inputs)
