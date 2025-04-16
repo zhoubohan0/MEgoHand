@@ -59,7 +59,7 @@ def get_embeddings(
     ## get visual embeddings from pixel, if provided then overwrite
     assert pixel_values is not None and self.img_context_token_id is not None
     pixel_values, input_ids, attention_mask = pixel_values.squeeze(1), input_ids.squeeze(1), attention_mask.squeeze(1)  # avoid additional batch dim
-    vit_embeds = self.extract_feature(pixel_values)  # [B, 3, 224, 224] -> [B, 64, 2048]
+    vit_embeds = self.extract_feature(pixel_values.float())  # [B, 3, 224, 224] -> [B, 64, 2048]
     # pooling visual feature and depth feature
     visual_embeds = (depth_feature + vit_embeds) if depth_feature is not None else vit_embeds
 
