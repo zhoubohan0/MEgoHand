@@ -295,20 +295,21 @@ class FlowmatchingActionHead(nn.Module):
         sample = self.beta_dist.sample([batch_size]).to(device, dtype=dtype)
         return (self.config.noise_s - sample) / self.config.noise_s
 
-    def prepare_input(self, batch: dict) -> BatchFeature:
-        return BatchFeature(data=batch)
+    def prepare_input(self, batch: dict):# -> BatchFeature:
+        # return BatchFeature(data=batch)
+        return batch
 
-    def forward(self, backbone_output: BatchFeature, action_input: BatchFeature) -> BatchFeature:
+    def forward(self, backbone_output, action_input): #BatchFeature: BatchFeature -> BatchFeature:
         # Set frozen modules to eval
         self.set_frozen_modules_to_eval_mode()
 
         # vision and language embeddings
-        vl_embeds = backbone_output.backbone_features
+        vl_embeds = backbone_output['backbone_features']
 
         # Embed state.
-        state_features = self.state_encoder(action_input.state)
+        state_features = self.state_encoder(action_input['state'])
         # Embed noised action trajectory.
-        actions = action_input.action
+        actions = action_input['action']
         noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
         t = self.sample_time(actions.shape[0], device=actions.device, dtype=actions.dtype)
         t = t[:, None, None]  # shape (B,1,1) for broadcast
@@ -328,7 +329,7 @@ class FlowmatchingActionHead(nn.Module):
 
         # Join vision, language, state and action embedding along sequence dimension.
         sa_embs = torch.cat((state_features, action_features), dim=1)
-        vl_attn_mask = backbone_output.backbone_attention_mask
+        vl_attn_mask = backbone_output['backbone_attention_mask']
 
         model_output = self.model(
             hidden_states=sa_embs,
@@ -340,15 +341,16 @@ class FlowmatchingActionHead(nn.Module):
         pred_actions = pred[:, -actions.shape[1] :]
 
         # Slice out only the action portion of pred and target.
-        action_mask = action_input.action_mask
+        action_mask = action_input['action_mask']
         # TODO: loss
         loss = F.smooth_l1_loss(pred_actions, velocity, reduction="none") * action_mask
         loss = loss.sum() / action_mask.sum()
         output_dict = dict(loss=loss)
-        return BatchFeature(data=output_dict)
+        # return BatchFeature(data=output_dict)
+        return output_dict
 
     @torch.no_grad()
-    def get_action(self, backbone_output: BatchFeature, action_input: BatchFeature) -> BatchFeature:
+    def get_action(self, backbone_output, action_input): #BatchFeature: BatchFeature -> BatchFeature:
         # Get vision and language embeddings.
         vl_embeds = backbone_output.backbone_features   # [B, T1, 1536]
 
@@ -390,7 +392,8 @@ class FlowmatchingActionHead(nn.Module):
             pred_velocity = pred[:, -self.action_horizon :]          # [1, T, 32]
             # Update actions using euler integration.
             actions = actions + dt * pred_velocity
-        return BatchFeature(data={"action_pred": actions})
+        # return BatchFeature(data={"action_pred": actions})
+        return {"action_pred": actions}
 
     @property
     def device(self):

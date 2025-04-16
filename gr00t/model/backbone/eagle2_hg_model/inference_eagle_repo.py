@@ -492,7 +492,8 @@ class EagleProcessor:
             "input_ids": input_ids,
             "attention_mask": attention_mask,
         }
-        return BatchFeature(data)
+        # return BatchFeature(data)
+        return data
 
 
 def reshape_model_embeddings(model, factor):

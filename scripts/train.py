@@ -53,23 +53,23 @@ class Config:
     """Data configuration name from DATA_CONFIG_MAP."""
 
     # Training parameters
-    batch_size: int = 8
+    batch_size: int = 128
     """Batch size per GPU for training."""
 
-    max_steps: int = 10000
+    max_steps: int = 1000000
     """Maximum number of training steps."""
 
-    num_gpus: int = 1
+    num_gpus: int = 8
     """Number of GPUs to use for training."""
 
-    save_steps: int = 500
+    save_steps: int = 10000
     """Number of steps between saving checkpoints."""
 
     # Model parameters
     model_cfg_path: str = "model_config"
     """Path or HuggingFace model ID for the base model."""
 
-    tune_llm: bool = False
+    tune_llm: int = 0
     """Whether to fine-tune the language model backbone."""
 
     tune_visual: bool = True
@@ -81,7 +81,7 @@ class Config:
     tune_diffusion_model: bool = True
     """Whether to fine-tune the diffusion model."""
 
-    resume: bool = False
+    resume: str = ""
     """Whether to resume from a checkpoint."""
 
     # Advanced training parameters
@@ -94,7 +94,7 @@ class Config:
     warmup_ratio: float = 0.05
     """Ratio of total training steps used for warmup."""
 
-    lora_rank: int = 0
+    lora_rank: int = 32
     """Rank for the LORA model."""
 
     lora_alpha: int = 16
@@ -123,7 +123,10 @@ class Config:
 
 
 def main(config: Config):
-    """Main training function."""
+    # custom config editing
+    config.output_dir = os.path.join(config.output_dir, config.exp_name)
+    if config.tune_llm:
+        config.save_steps *= 20 
     # ------------ step 1: load dataset ------------
     data_config = DATA_CONFIG_MAP[config.data_config]
     # modality_configs = data_config.modality_config()
@@ -185,7 +188,7 @@ def main(config: Config):
 
     # 2.1 modify training args
     training_args = TrainingArguments(
-        output_dir=os.path.join(config.output_dir, config.exp_name),
+        output_dir=config.output_dir,
         run_name=None,
         remove_unused_columns=False,
         deepspeed="",
@@ -213,7 +216,7 @@ def main(config: Config):
         save_total_limit=8,
         report_to=config.report_to,
         seed=42,
-        ddp_find_unused_parameters=False,
+        ddp_find_unused_parameters=True, # for parallel
         ddp_bucket_cap_mb=100,
         torch_compile_mode=None,
         # eval
@@ -266,8 +269,8 @@ if __name__ == "__main__":
             # Multi-GPU mode - use torchrun
             script_path = Path(__file__).absolute()
             # Remove any existing CUDA_VISIBLE_DEVICES from environment
-            if "CUDA_VISIBLE_DEVICES" in os.environ:
-                del os.environ["CUDA_VISIBLE_DEVICES"]
+            # if "CUDA_VISIBLE_DEVICES" in os.environ:
+            #     del os.environ["CUDA_VISIBLE_DEVICES"]
 
             # Use subprocess.run instead of os.system
             cmd = [

@@ -212,7 +212,7 @@ class GR00T_N1(PreTrainedModel):
         backbone_outputs = self.backbone(backbone_inputs)
         action_head_outputs = self.action_head(backbone_outputs, action_inputs)
         action_head_outputs.update({k:v for k,v in backbone_outputs.items() if 'loss' in k})
-        self.validate_data(action_head_outputs, backbone_outputs, is_training=True)
+        # self.validate_data(action_head_outputs, backbone_outputs, is_training=True)
         return action_head_outputs
 
     def get_action(
@@ -226,7 +226,7 @@ class GR00T_N1(PreTrainedModel):
         backbone_outputs['backbone_attention_mask']: [1, 99]
         '''
         action_head_outputs = self.action_head.get_action(backbone_outputs, action_inputs)  # action_head_outputs['action_pred']: (B, T, Da)
-        self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
+        # self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
         return action_head_outputs
 
     def prepare_input(self, inputs) -> Tuple[BatchFeature, BatchFeature]:

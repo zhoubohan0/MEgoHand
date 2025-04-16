@@ -35,7 +35,7 @@ class TrainRunner:
         training_args: TrainingArguments,
         train_dataset,
         eval_dataset,
-        resume_from_checkpoint: bool = False,
+        resume_from_checkpoint: str = "",
     ):
         self.training_args = training_args
         self.exp_cfg_dir = Path(os.path.join(training_args.output_dir, "experiment_cfg"))

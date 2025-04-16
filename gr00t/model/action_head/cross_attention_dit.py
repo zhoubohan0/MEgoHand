@@ -17,6 +17,7 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
+from torch.cuda.amp import autocast
 from diffusers import ConfigMixin, ModelMixin
 from diffusers.configuration_utils import register_to_config
 from diffusers.models.attention import Attention, FeedForward
@@ -35,7 +36,7 @@ class TimestepEncoder(nn.Module):
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
     def forward(self, timesteps):
-        dtype = next(self.parameters()).dtype
+        dtype = next(self.parameters(), torch.tensor(0., dtype=torch.float32)).dtype
         timesteps_proj = self.time_proj(timesteps).to(dtype)
         timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
         return timesteps_emb

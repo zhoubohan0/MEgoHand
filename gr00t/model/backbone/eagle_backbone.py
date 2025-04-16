@@ -16,11 +16,11 @@
 import os
 import torch
 from torch import nn
+from torch.cuda.amp import autocast
 from transformers import AutoConfig, AutoModel
 from transformers.feature_extraction_utils import BatchFeature
 import torchvision.models as models
 from einops import repeat, rearrange
-
 import gr00t
 from gr00t.utils.util import depth_to1, resize, mse, minmaxscale
 from gr00t.model.transforms import EAGLE_KEYS
@@ -59,7 +59,8 @@ def get_embeddings(
     ## get visual embeddings from pixel, if provided then overwrite
     assert pixel_values is not None and self.img_context_token_id is not None
     pixel_values, input_ids, attention_mask = pixel_values.squeeze(1), input_ids.squeeze(1), attention_mask.squeeze(1)  # avoid additional batch dim
-    vit_embeds = self.extract_feature(pixel_values.float())  # [B, 3, 224, 224] -> [B, 64, 2048]
+    with autocast(dtype=torch.bfloat16):
+        vit_embeds = self.extract_feature(pixel_values)  # [B, 3, 224, 224] -> [B, 64, 2048]
     # pooling visual feature and depth feature
     visual_embeds = (depth_feature + vit_embeds) if depth_feature is not None else vit_embeds
 
@@ -77,11 +78,12 @@ def get_embeddings(
     input_embeds = input_embeds.reshape(B, N, C)
 
     ## vllm forward
-    embeddings = self.language_model.forward(
-        inputs_embeds=input_embeds,
-        attention_mask=attention_mask,
-        output_hidden_states=True,
-    ).hidden_states[-1]
+    with autocast(dtype=torch.bfloat16):
+        embeddings = self.language_model.forward(
+            inputs_embeds=input_embeds,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+        ).hidden_states[-1]
 
     if reproject_vision:  # only use the output of language and overwrite the input visual embeddings
         embeddings = embeddings.reshape(B * N, C)
@@ -202,13 +204,14 @@ class EagleBackbone(nn.Module):
                 self.model.vision_model.eval()
                 self.model.mlp1.eval()
 
-    def prepare_input(self, batch: dict) -> BatchFeature:
+    def prepare_input(self, batch: dict):# -> BatchFeature
         for key in self.valid_input_keys:
             if key not in batch:
                 raise ValueError(f"Missing required input key: {key}")
-        return BatchFeature(data=batch)
+        # return BatchFeature(data=batch)
+        return batch
 
-    def forward(self, vl_input: BatchFeature) -> BatchFeature:
+    def forward(self, vl_input):#: BatchFeature -> BatchFeature
         '''
         vl_input["pixel_values"]: [B, 3, H, W]
         vl_input["input_ids"]: [B, T1] language token ids
@@ -247,4 +250,5 @@ class EagleBackbone(nn.Module):
             breakpoint()
             '''
         
-        return BatchFeature(data=vlm_output)  
+        # return BatchFeature(data=vlm_output)  
+        return vlm_output
