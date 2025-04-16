@@ -56,7 +56,7 @@ class Config:
     batch_size: int = 128
     """Batch size per GPU for training."""
 
-    max_steps: int = 1000000
+    max_steps: int = 100000
     """Maximum number of training steps."""
 
     num_gpus: int = 8

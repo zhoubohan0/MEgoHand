@@ -18,7 +18,7 @@ Training
 ```bash
 # MHMP
 bash bash/train.sh -dataset_list taco -depthanything_path "" -incorporate_depth 0 -exp_name RGB_notunellm -lora_rank 0 -tune_llm 0 -device "0,1,2,3" -batch_size 118
-bash bash/train.sh -dataset_list taco -depthanything_path "" -incorporate_depth 0 -exp_name RGB_lora -lora_rank 32 -tune_llm 1 -device "4,5,6,7" -resume "logs/RGB_lora/checkpoint-v0"
+bash bash/train.sh -dataset_list taco -depthanything_path "" -incorporate_depth 0 -exp_name RGB_lora -lora_rank 32 -tune_llm 1 -device "4,5,6,7"  # -resume "logs/RGB_lora/checkpoint-v0"
 # MHMP+
 
 ```

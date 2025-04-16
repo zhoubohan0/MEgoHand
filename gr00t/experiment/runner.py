@@ -146,7 +146,7 @@ class TrainRunner:
 
     def train(self):
         # Start training
-        self.trainer.train(resume_from_checkpoint=self.resume_from_checkpoint)
+        self.trainer.train(resume_from_checkpoint=False if not self.resume_from_checkpoint else self.resume_from_checkpoint)
         self.trainer.save_state()
 
         safe_save_model_for_hf_trainer(
