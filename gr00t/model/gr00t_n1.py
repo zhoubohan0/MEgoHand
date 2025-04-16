@@ -231,8 +231,20 @@ class GR00T_N1(PreTrainedModel):
 
     def prepare_input(self, inputs) -> Tuple[BatchFeature, BatchFeature]:
         self.validate_inputs(inputs)
-        backbone_inputs = self.backbone.prepare_input(inputs)
-        action_inputs = self.action_head.prepare_input(inputs)
+        backbone_inputs = self.backbone.prepare_input(inputs)  
+        '''
+        pixel_values torch.bfloat16
+        input_ids torch.int64
+        attention_mask torch.int64
+        video.depthanything torch.float32
+        '''
+        action_inputs = self.action_head.prepare_input(inputs) 
+        '''
+        state torch.float32
+        action torch.float32
+        action_mask torch.bool
+        '''
+
         '''
         to_device_with_maybe_dtype = lambda x: x.to(self.device, dtype=self.action_head.dtype) if torch.is_floating_point(x) else x.to(self.device)
         backbone_inputs = tree.map_structure(to_device_with_maybe_dtype, backbone_inputs)
