@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 import torch.jit as jit
 
+
 class RunningMeanStdMinMax(jit.ScriptModule):
     def __init__(self, shape=(), device='cuda'):
         super(RunningMeanStdMinMax, self).__init__()

@@ -13,14 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-python scripts/test.py
-    --action_horizon 16
-    --dataset_path demo_data/robot_sim.PickNPlace/
-    --data_config hand_motion
-provide --pretrain_ckpt to load up the model checkpoint in this script.
-"""
-
 import argparse
 import warnings
 import numpy as np
@@ -62,10 +54,13 @@ def cal_metrics(pred, true):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_list", type=str, required=True, help="dataset string split by comma, e.g. 'oakink2,hoi4d'") 
+    parser.add_argument("--dataset_path", type=str, default="/mnt/vepfs/zbh/MHMP/datasets/")
     parser.add_argument("--data_config", type=str, default="hand_motion", choices=list(DATA_CONFIG_MAP.keys()),help="data config name",)
-    parser.add_argument("--action_horizon", type=int, default=16)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--split_portion", type=float, default=1.0)
+    parser.add_argument("--batch_size", type=int, default=8192)
     parser.add_argument("--pretrain_ckpt", type=str, default=None, help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",)
+    parser.add_argument("--debug", type=int, default=0)
     args = parser.parse_args()
     # model
     data_config = DATA_CONFIG_MAP[args.data_config]
@@ -77,21 +72,17 @@ if __name__ == "__main__":
         modality_transform=modality_transform,
         pretrain_ckpt=args.pretrain_ckpt,
     )
-    # test dataset
-    test_dataset_name_list = [
-        "hoi4d",  # zhan
-        # "oakink2",  # zhan_4t 
-    ]
-    test_dataset_list = []
-    for each in test_dataset_name_list:
-        dataset_name = each.upper()
-        dataset = eval(f"{dataset_name}Dataset")()
-        dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right'), split=dict(train=1.0))
-        test_dataset_list.append(dataset)
-    cascaded_dataset = CascadedDataset(test_dataset_list)
+    data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
+    cascaded_dataset = load_cascaded_dataset(
+        dataset_path=args.dataset_path,
+        dataset_list=args.dataset_list.split(','),
+        split_portion=args.split_portion,
+        data_config=data_config,
+        data_storage_kwargs=data_storage_kwargs,
+        test=True,
+        debug=args.debug,
+    )
     test_dataloader = DataLoader(cascaded_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False, collate_fn=default_collate_fn)
-    print("Test dataset:", [str(each) for each in test_dataset_name_list])
-    print("Total test samples:", len(cascaded_dataset))
     
     avg_metrics = {
         'action.theta': [],
@@ -103,6 +94,15 @@ if __name__ == "__main__":
         # inference
         gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
         pred_action = policy.get_action(step_data)
+        '''
+        absolute_future_hand_rotmat, absolute_future_hand_trans = decode_absolute_pose_from_relative(
+            torch.Tensor(self.storage["motion_sequences"]['rot'][frame_id:frame_id+1]),
+            torch.Tensor(self.storage["motion_sequences"]['trans'][frame_id:frame_id+1]),
+            future_hand_rotmat, future_hand_trans
+        )
+        assert torch.allclose(absolute_future_hand_rotmat, torch.Tensor(self.storage["motion_sequences"]['rot'][frame_id+1:frame_id+self.window_size+1]))
+        assert torch.allclose(absolute_future_hand_trans, torch.Tensor(self.storage["motion_sequences"]['trans'][frame_id+1:frame_id+self.window_size+1]))
+        '''
         batch_avg_metrics = cal_metrics(pred_action, gt_action)
         pbar.set_postfix(batch_avg_metrics)
         for k, v in batch_avg_metrics.items():

@@ -205,7 +205,7 @@ class MHMPolicy(BasePolicy):
         '''
         # add 'state_mask', image-text 'input_ids' and all one 'attention_mask'
         normalized_input = self.apply_transforms(observations)
-        normalized_action = self._get_action_from_normalized_input(normalized_input)
+        normalized_action = self._get_action_from_normalized_input({k: v.cuda() for k, v in normalized_input.items()})
         unnormalized_action = self._get_unnormalized_action(normalized_action)
         if not is_batch:
             unnormalized_action = squeeze_dict_values(unnormalized_action)

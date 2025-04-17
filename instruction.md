@@ -22,4 +22,11 @@ git submodule update --init --recursive  # for first-time or after clone
 cd mhmp_vis # Edit and Push to Submodule (2-way sync) by add commit and push
 ```
 
-
+VSCode 
+    for entry in os.scandir(join(prefix, "etc", "conda", "deactivate.d"))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "<frozen posixpath>", line 76, in join
+TypeError: expected str, bytes or os.PathLike object, not NoneType
+```bash
+export CONDA_SHLVL=0
+```

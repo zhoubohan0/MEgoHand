@@ -220,11 +220,17 @@ class GR00T_N1(PreTrainedModel):
         inputs: dict,
     ) -> BatchFeature:
         backbone_inputs, action_inputs = self.prepare_input(inputs)  # repeat
+        '''
+        backbone_inputs:
+        - pixel_values torch.bfloat16
+        - input_ids torch.int64
+        - attention_mask torch.int64
+        - (video.depthanything torch.float32)
+
+        action_inputs:
+        - state torch.float32
+        '''
         backbone_outputs = self.backbone(backbone_inputs)
-        '''
-        backbone_outputs['backbone_features']: [1, 99, 1536]
-        backbone_outputs['backbone_attention_mask']: [1, 99]
-        '''
         action_head_outputs = self.action_head.get_action(backbone_outputs, action_inputs)  # action_head_outputs['action_pred']: (B, T, Da)
         # self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
         return action_head_outputs
@@ -233,18 +239,24 @@ class GR00T_N1(PreTrainedModel):
         self.validate_inputs(inputs)
         backbone_inputs = self.backbone.prepare_input(inputs)  
         '''
-        pixel_values torch.bfloat16
-        input_ids torch.int64
-        attention_mask torch.int64
-        video.depthanything torch.float32
+        backbone_inputs:
+        - pixel_values torch.bfloat16
+        - input_ids torch.int64
+        - attention_mask torch.int64
+        - (video.depthanything torch.float32)
+        backbone_outputs:
+        - backbone_outputs['backbone_features']: [1, 99, 1536]
+        - backbone_outputs['backbone_attention_mask']: [1, 99]
         '''
         action_inputs = self.action_head.prepare_input(inputs) 
         '''
-        state torch.float32
-        action torch.float32
-        action_mask torch.bool
+        action_inputs:
+        - state torch.float32
+        - action torch.float32
+        - action_mask torch.bool
         '''
 
+        # to device and dtype
         '''
         to_device_with_maybe_dtype = lambda x: x.to(self.device, dtype=self.action_head.dtype) if torch.is_floating_point(x) else x.to(self.device)
         backbone_inputs = tree.map_structure(to_device_with_maybe_dtype, backbone_inputs)

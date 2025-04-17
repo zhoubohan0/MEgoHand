@@ -23,13 +23,12 @@ import torch
 import tyro
 from transformers import TrainingArguments
 
-from gr00t.data.dataset import LeRobotSingleDataset
-from gr00t.data.schema import EmbodimentTag, DatasetMetadata
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.experiment.runner import TrainRunner
 from gr00t.model.gr00t_n1 import GR00T_N1, GR00T_N1Config
 from gr00t.utils.peft import get_lora_model
-from mhmp_vis.dataset_loader import *
+from mhmp_vis.dataset_loader import load_cascaded_dataset
+
 
 
 @dataclass
@@ -56,12 +55,7 @@ class Config:
     batch_size: int = 128
     """Batch size per GPU for training."""
 
-    max_steps: int = 100000
-    """Maximum number of training steps."""
-
-    num_gpus: int = 8
-    """Number of GPUs to use for training."""
-
+    max_steps: iargs
     save_steps: int = 10000
     """Number of steps between saving checkpoints."""
 
@@ -125,45 +119,23 @@ class Config:
 def main(config: Config):
     # custom config editing
     config.output_dir = os.path.join(config.output_dir, config.exp_name)
-    if config.tune_llm:
-        config.save_steps *= 20 
+    config.eval_steps = config.save_steps // 4
+        
     # ------------ step 1: load dataset ------------
     data_config = DATA_CONFIG_MAP[config.data_config]
     # modality_configs = data_config.modality_config()
-    '''
-    train_dataset = LeRobotSingleDataset(
-        dataset_path=config.dataset_path,
-        modality_configs=modality_configs,
-        transforms=transforms,
-        video_backend=config.video_backend,
-    )
-    train_dataset_name_list = [
-        # "taco"
-        "fpha"
-        # "hoi4d"
-    ]
-    '''
 
-    train_dataset_list, eval_dataset_list = [], []
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
-    for each in config.dataset_list.split(','):
-        train_class_name = each.upper()
-        train_dataset_name = train_class_name if config.debug and 'TACO' in train_class_name else train_class_name
-        train_dataset = eval(f"{train_class_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name), debug=config.debug)
-        train_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(train=config.split_portion)) 
-        train_dataset_list.append(train_dataset)
-        eval_dataset = eval(f"{train_class_name}Dataset")(os.path.join(config.dataset_path, train_dataset_name), debug=config.debug)
-        eval_dataset.initialize_data_storage(eval(f"{train_class_name}Storage"), data_storage_kwargs, split=dict(eval=config.split_portion))
-        eval_dataset_list.append(eval_dataset)
-    transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO: statistics on server
-    train_transforms = data_config.transform(split='train')
-    train_transforms.set_metadata(transform_meta)
-    train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
-    print(f'Use {len(train_dataset)} samples for training')
-    eval_transforms = data_config.transform(split='eval')
-    eval_transforms.set_metadata(transform_meta)
-    eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, eval_transforms)
-    print(f'Use {len(eval_dataset)} samples for evaluation')
+    train_dataset, eval_dataset = load_cascaded_dataset(
+        dataset_path=config.dataset_path,
+        dataset_list=config.dataset_list.split(','),
+        split_portion=config.split_portion,
+        data_config=data_config,
+        data_storage_kwargs=data_storage_kwargs,
+        test=False,
+        debug=config.debug,
+    )
+
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
@@ -222,7 +194,7 @@ def main(config: Config):
         # eval
         do_eval=True,
         evaluation_strategy="steps",   # epoch
-        eval_steps=config.save_steps,  # when evaluation_strategy is "steps"
+        eval_steps=config.eval_steps,  # when evaluation_strategy is "steps"
         per_device_eval_batch_size=config.batch_size,
         label_names=["action"],
     )
