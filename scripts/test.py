@@ -17,18 +17,22 @@ import argparse
 import warnings
 import numpy as np
 import torch
-# import matplotlib.pyplot as plt
+from einops import repeat
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
 from gr00t.utils.util import default_collate_fn, mse, glance_dict
 from mhmp_vis.dataset_loader import *
-from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist
+from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist, decode_absolute_pose_from_relative, batch_rot2aa, get_pose12d_from_camera_to_world
+from mhmp_vis.utils.util import mano_forward
+from mhmp_vis.utils.pc import get_pc_from_world_to_camera, get_pc_from_camera_to_world
+from mhmp_vis.dataset_visualizer.general_offline_visualizer import offline_render
+# from mhmp_vis.dataset_visualizer.general_interactive_visualizer import GeneralInteractiveVisualizer
 
 warnings.simplefilter("ignore", category=FutureWarning)
 
-def cal_metrics(pred, true):
+def cal_metrics(pred, true, return_pred=False):
     assert all(isinstance(pred[key], type(true[key])) for key in pred.keys()), "The keys of pred and true must be the same."
     pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
     true = {k: torch.as_tensor(v).cuda() for k, v in true.items()}
@@ -44,12 +48,149 @@ def cal_metrics(pred, true):
         action.trans: torch.Size([B, T, 3])  
     }
     '''
-    # B, T = true['action.trans'].shape[:2]
-    return {
-        'action.theta': rotmat_dist(rot6d_to_rotmat(pred['action.theta'].reshape(-1,6)),rot6d_to_rotmat(true['action.theta'].reshape(-1,6))).mean(),
-        'action.rot': rotmat_dist(rot6d_to_rotmat(pred['action.rot'].reshape(-1,6)),rot6d_to_rotmat(true['action.rot'].reshape(-1,6))).mean(),
+    B, T = true['action.trans'].shape[:2]
+    pred_theta_flatten_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
+    true_theta_flatten_9d = rot6d_to_rotmat(true['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
+    pred_rot_flatten_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
+    true_rot_flatten_9d = rot6d_to_rotmat(true['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
+    
+    metrics = {
+        'action.theta': rotmat_dist(pred_theta_flatten_9d, true_theta_flatten_9d).mean(),
+        'action.rot': rotmat_dist(pred_rot_flatten_9d, true_rot_flatten_9d).mean(),
         'action.trans': mse(pred['action.trans'],true['action.trans']),
     }
+    if return_pred:
+        pred_theta = batch_rot2aa(pred_theta_flatten_9d).view(B, T, 45)      
+        pred_rot9d = pred_rot_flatten_9d.view(B, T, 3, 3) 
+        pred_mano_param = dict(
+            theta=pred_theta,           # (B, T, 45)
+            rot9d=pred_rot9d,           # (B, T, 3, 3)
+            trans=pred['action.trans']  # (B, T, 3)
+        )
+        return metrics, pred_mano_param
+    else:
+        return metrics 
+
+def conduct_testing(cascaded_dataset, policy, batch_size=8192):
+    avg_metrics = {
+        'action.theta': [],
+        'action.rot': [],
+        'action.trans': [],
+    }
+    test_dataloader = DataLoader(cascaded_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False, collate_fn=default_collate_fn)
+    pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="Testing", unit="batch")
+    for i, step_data in pbar:
+        # inference
+        gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
+        pred_action = policy.get_action(step_data)
+        
+        batch_avg_metrics = cal_metrics(pred_action, gt_action)
+        pbar.set_postfix(batch_avg_metrics)
+        for k, v in batch_avg_metrics.items():
+            avg_metrics[k].append(v.item())
+        if i % 10 == 0:
+            avg_mean_metrics = {k: np.mean(v) for k, v in avg_metrics.items()}
+            print(f"{i+1} Batch Average: {avg_mean_metrics}")
+
+
+def conduct_visualization(cascaded_dataset, policy, per_vis=1):
+    def truncate_vis_data(vis_data, trunk_len):
+        vis_data_copy = vis_data.copy()
+        for k in ['image_filenames', 'cam_left_hand_verts', 'cam_right_hand_verts', 'world_left_hand_verts', 'world_right_hand_verts', 'extrinsic_matrix_sequence']:
+            vis_data_copy[k] = vis_data_copy[k][:trunk_len]
+        for view in ['cam', 'world']:
+            for i in range(len(vis_data_copy[f'{view}_object_dict_list'])):
+                vis_data_copy[f'{view}_object_dict_list'][i][f'{view}_object_verts'] = vis_data_copy[f'{view}_object_dict_list'][i][f'{view}_object_verts'][:trunk_len]
+        # for k in vis_data_copy: print(k, len(vis_data_copy[k]) if vis_data_copy[k] is not None else '')
+        return vis_data_copy
+    window_size = cascaded_dataset.dataset_list[0].data_storage.window_size
+    side = cascaded_dataset.dataset_list[0].data_storage.side
+    # get all trajectories index in cascaded_dataset
+    all_trajectory_index = dict()
+    for dataset_idx in range(len(cascaded_dataset.dataset_list)):
+         dataset = cascaded_dataset.dataset_list[dataset_idx]
+         all_trajectory_index[str(dataset)] = np.array(dataset.data_storage.valid_trajectory_range) + cascaded_dataset.cumsum_length_list[dataset_idx]
+    # Visualize K trajectories for each dataset 
+    for dataset_name, trajectory_range in all_trajectory_index.items():
+        vis_trajectory_range = trajectory_range[np.random.choice(len(trajectory_range), per_vis, replace=False)] if len(trajectory_range) > per_vis else trajectory_range
+        for i_traj in range(len(vis_trajectory_range)):
+            b, e = vis_trajectory_range[i_traj]
+            T = e - b
+            ## calculate trajectory loss
+            step_data = default_collate_fn([cascaded_dataset[_] for _ in range(b,e)])
+            gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
+            pred_action = policy.get_action(step_data)
+            batch_avg_metrics, pred_mano = cal_metrics(pred_action, gt_action, return_pred=True)
+            print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
+            ## visualize
+            dataset_idx, sample_idx = cascaded_dataset.get_dataset_sample_id_by_idx(b)
+            dataset = cascaded_dataset.dataset_list[dataset_idx]
+            storage_data = default_collate_fn([dataset.index_for_vis(sample_idx+_) for _ in range(T)])
+            assert len(np.unique(storage_data['task_name'])) == 1
+            task_name = storage_data['task_name'][0][0]
+            vis_data = dataset.task_example_for_vis(task_name)
+            assert all([x in vis_data['save_video_file'] for x in task_name.split('/')])
+            timestep = 0 #np.random.choice(window_size)  # t0 in [0, window_size)
+            # save original video
+            # offline_render(**vis_data)
+            vis_data['save_video_file'] = f'_pred{window_size}'.join(os.path.splitext(vis_data['save_video_file']))
+            # overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts'
+            mano_beta = torch.Tensor(storage_data['state.beta']).squeeze(1).cuda()
+            init_rot = torch.Tensor(storage_data['state.rot']).squeeze(1).cuda()
+            init_trans = torch.Tensor(storage_data['state.trans']).squeeze(1).cuda()
+            extrinsic_matrix_sequence = torch.Tensor(vis_data['extrinsic_matrix_sequence']).cuda()
+            while timestep < T:
+                pred_mano_theta = pred_mano['theta'][timestep]  # (W, 45)
+                goal_timestep = timestep + window_size
+                # relative pose -> absolute cam pose
+                pred_mano_rot9d, pred_mano_trans = decode_absolute_pose_from_relative(  # (W, 3, 3), (W, 3)
+                    init_rot[[timestep]],
+                    init_trans[[timestep]],
+                    pred_mano['rot9d'][timestep], 
+                    pred_mano['trans'][timestep], 
+                )
+                # absolute cam pose -> absolute world pose
+                pred_mano_rot9d_world, pred_mano_trans_chunk = get_pose12d_from_camera_to_world(  # (W, 3, 3), (W, 3)
+                    pred_mano_rot9d[:window_size], pred_mano_trans[:window_size],
+                    extrinsic_matrix_sequence[timestep+1:goal_timestep+1],
+                )
+                # TODO:
+                # adjacent rotation interpolation: Bézier curves / cubic spline / spherical linear interpolation
+                # rotation sequence smooth:  temporal convolution, followed by an orthogonalisation
+                pred_mano_rot_chunk = batch_rot2aa(pred_mano_rot9d_world)                       # (W, 3)
+                pred_mano_theta_chunk = pred_mano_theta[:window_size]                           # (W, 45)
+                pred_mano_beta_chunk = repeat(mano_beta[timestep], 'L -> B L', B=window_size)   # (W, 10)
+                # absolute world pose -> hand vertices
+                '''
+                # evaluate GT mano params
+                (hand_theta45, hand_beta, hand_rot, hand_trans) = torch.load('/mnt/vepfs/zbh/MHMP/right_hand_theta.pt')
+                state_rot_world, state_trans_world = get_pose12d_from_camera_to_world(
+                    torch.Tensor(storage_data['state.rot'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
+                    torch.Tensor(storage_data['state.trans'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
+                    extrinsic_matrix_sequence[timestep+1:goal_timestep+1]
+                )
+                breakpoint()
+                future_hand_vertices = mano_forward(
+                    torch.Tensor(storage_data['state.theta'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
+                    torch.Tensor(storage_data['state.beta'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
+                    batch_rot2aa(state_rot_world),
+                    state_trans_world,
+                    side,
+                )[0]
+                assert torch.allclose(torch.Tensor(vis_data[f'world_{side}_hand_verts'][timestep+1:goal_timestep+1]).cuda(), future_hand_vertices)
+                '''
+                pred_hand_vertices = mano_forward(pred_mano_theta_chunk, pred_mano_beta_chunk, pred_mano_rot_chunk, pred_mano_trans_chunk, side)[0]
+                vis_data[f'world_{side}_hand_verts'][timestep+1:goal_timestep+1] = pred_hand_vertices.cpu().numpy()
+                # offline_render(**truncate_vis_data(vis_data, goal_timestep+1))
+                '''
+                # for interactive render
+                pred_hand_vertices_cam = get_pc_from_world_to_camera(pred_hand_vertices, extrinsic_matrix_sequence[timestep+1:goal_timestep+1]) 
+                vis_data[f'cam_{side}_hand_verts'][timestep+1:goal_timestep+1] = pred_hand_vertices_cam.cpu().numpy()
+                '''
+                timestep = goal_timestep
+            # visualize
+            offline_render(**vis_data)
+            breakpoint()
 
 
 if __name__ == "__main__":
@@ -62,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--pretrain_ckpt", type=str, default=None, help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",)
     parser.add_argument("--debug", type=int, default=0)
     args = parser.parse_args()
-    # model
+    # policy
     data_config = DATA_CONFIG_MAP[args.data_config]
     modality_config = data_config.modality_config()
     modality_transform = data_config.transform(split='test')
@@ -72,6 +213,7 @@ if __name__ == "__main__":
         modality_transform=modality_transform,
         pretrain_ckpt=args.pretrain_ckpt,
     )
+    # dataset
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
     cascaded_dataset = load_cascaded_dataset(
         dataset_path=args.dataset_path,
@@ -82,31 +224,10 @@ if __name__ == "__main__":
         test=True,
         debug=args.debug,
     )
-    test_dataloader = DataLoader(cascaded_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False, collate_fn=default_collate_fn)
     
-    avg_metrics = {
-        'action.theta': [],
-        'action.rot': [],
-        'action.trans': [],
-    }
-    pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="Testing", unit="batch")
-    for i, step_data in pbar:
-        # inference
-        gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
-        pred_action = policy.get_action(step_data)
-        '''
-        absolute_future_hand_rotmat, absolute_future_hand_trans = decode_absolute_pose_from_relative(
-            torch.Tensor(self.storage["motion_sequences"]['rot'][frame_id:frame_id+1]),
-            torch.Tensor(self.storage["motion_sequences"]['trans'][frame_id:frame_id+1]),
-            future_hand_rotmat, future_hand_trans
-        )
-        assert torch.allclose(absolute_future_hand_rotmat, torch.Tensor(self.storage["motion_sequences"]['rot'][frame_id+1:frame_id+self.window_size+1]))
-        assert torch.allclose(absolute_future_hand_trans, torch.Tensor(self.storage["motion_sequences"]['trans'][frame_id+1:frame_id+self.window_size+1]))
-        '''
-        batch_avg_metrics = cal_metrics(pred_action, gt_action)
-        pbar.set_postfix(batch_avg_metrics)
-        for k, v in batch_avg_metrics.items():
-            avg_metrics[k].append(v.item())
-        if i % 10 == 0:
-            avg_mean_metrics = {k: np.mean(v) for k, v in avg_metrics.items()}
-            print(f"{i+1} Batch Average: {avg_mean_metrics}")
+    # conduct testing for reporting loss
+    # conduct_testing(cascaded_dataset, policy, batch_size=args.batch_size)
+
+    # conduct testing for visualization
+    conduct_visualization(cascaded_dataset, policy)
+    
