@@ -72,7 +72,6 @@ class GR00T_N1(PreTrainedModel):
         EagleBackbone(backbone_cfg)
         "backbone_cfg": {
             "allow_reshape_visual": true,
-            "load_pretrained_det_eagle_path": null,
             "model_name": "$GR00T_BACKBONE_PATH/eagle2_hg_model",
             "processor_cfg": {
             "max_input_tiles": 1,
@@ -83,7 +82,6 @@ class GR00T_N1(PreTrainedModel):
             }
             },
             "projector_dim": 2048,
-            "remove_llm": false,
             "reproject_vision": false,
             "scale_image_resolution": 1,
             "select_layer": 12,
@@ -127,6 +125,9 @@ class GR00T_N1(PreTrainedModel):
         assert isinstance(config.action_head_cfg, dict)
         super().__init__(config)
         self.local_model_path = local_model_path
+        # customize
+        config.backbone_cfg['depthanything_path'] = config.depthanything_path
+        config.backbone_cfg['incorporate_depth'] = config.incorporate_depth
         self.backbone = EagleBackbone(**config.backbone_cfg)
         self.action_head = FlowmatchingActionHead(FlowmatchingActionHeadConfig(**config.action_head_cfg))
         # seem unnecessary
@@ -210,7 +211,8 @@ class GR00T_N1(PreTrainedModel):
         backbone_inputs, action_inputs = self.prepare_input(inputs)
         backbone_outputs = self.backbone(backbone_inputs)
         action_head_outputs = self.action_head(backbone_outputs, action_inputs)
-        self.validate_data(action_head_outputs, backbone_outputs, is_training=True)
+        action_head_outputs.update({k:v for k,v in backbone_outputs.items() if 'loss' in k})
+        # self.validate_data(action_head_outputs, backbone_outputs, is_training=True)
         return action_head_outputs
 
     def get_action(
@@ -218,23 +220,48 @@ class GR00T_N1(PreTrainedModel):
         inputs: dict,
     ) -> BatchFeature:
         backbone_inputs, action_inputs = self.prepare_input(inputs)  # repeat
+        '''
+        backbone_inputs:
+        - pixel_values torch.bfloat16
+        - input_ids torch.int64
+        - attention_mask torch.int64
+        - (video.depthanything torch.float32)
+
+        action_inputs:
+        - state torch.float32
+        '''
         backbone_outputs = self.backbone(backbone_inputs)
-        '''
-        backbone_outputs['backbone_features']: [1, 99, 1536]
-        backbone_outputs['backbone_attention_mask']: [1, 99]
-        '''
         action_head_outputs = self.action_head.get_action(backbone_outputs, action_inputs)  # action_head_outputs['action_pred']: (B, T, Da)
-        self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
+        # self.validate_data(action_head_outputs, backbone_outputs, is_training=False)
         return action_head_outputs
 
     def prepare_input(self, inputs) -> Tuple[BatchFeature, BatchFeature]:
         self.validate_inputs(inputs)
-        backbone_inputs = self.backbone.prepare_input(inputs)
-        action_inputs = self.action_head.prepare_input(inputs)
-        # learn!
+        backbone_inputs = self.backbone.prepare_input(inputs)  
+        '''
+        backbone_inputs:
+        - pixel_values torch.bfloat16
+        - input_ids torch.int64
+        - attention_mask torch.int64
+        - (video.depthanything torch.float32)
+        backbone_outputs:
+        - backbone_outputs['backbone_features']: [1, 99, 1536]
+        - backbone_outputs['backbone_attention_mask']: [1, 99]
+        '''
+        action_inputs = self.action_head.prepare_input(inputs) 
+        '''
+        action_inputs:
+        - state torch.float32
+        - action torch.float32
+        - action_mask torch.bool
+        '''
+
+        # to device and dtype
+        '''
         to_device_with_maybe_dtype = lambda x: x.to(self.device, dtype=self.action_head.dtype) if torch.is_floating_point(x) else x.to(self.device)
         backbone_inputs = tree.map_structure(to_device_with_maybe_dtype, backbone_inputs)
         action_inputs = tree.map_structure(to_device_with_maybe_dtype, action_inputs)
+        '''
         return backbone_inputs, action_inputs
 
     @classmethod

@@ -37,7 +37,6 @@
   "attn_implementation": null,
   "backbone_cfg": {
     "allow_reshape_visual": true,
-    "load_pretrained_det_eagle_path": null,
     "model_name": "$GR00T_BACKBONE_PATH/eagle2_hg_model",
     "processor_cfg": {
       "max_input_tiles": 1,
@@ -48,7 +47,6 @@
       }
     },
     "projector_dim": 2048,
-    "remove_llm": false,
     "reproject_vision": false,
     "scale_image_resolution": 1,
     "select_layer": 12,

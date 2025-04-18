@@ -16,28 +16,33 @@
 import os, json
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
 import tyro
 from transformers import TrainingArguments
 
-from gr00t.data.dataset import LeRobotSingleDataset
-from gr00t.data.schema import EmbodimentTag, DatasetMetadata
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.experiment.runner import TrainRunner
 from gr00t.model.gr00t_n1 import GR00T_N1, GR00T_N1Config
 from gr00t.utils.peft import get_lora_model
-from mhmp_vis.dataset_loader import *
+from mhmp_vis.dataset_loader import load_cascaded_dataset
+
 
 
 @dataclass
 class Config:
-    """Configuration for GR00T model fine-tuning."""
+    # customize
+    depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
+    dataset_list: str = ""
+    exp_name: str = "runs"
+    incorporate_depth: int = 0
+    debug: int = 0
+    split_portion: float = 0.95
 
     # Dataset parameters
-    dataset_path: str = 'demo_data/robot_sim.PickNPlace'
+    dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
     """Path to the dataset directory."""
 
     output_dir: str = "logs"
@@ -47,26 +52,26 @@ class Config:
     """Data configuration name from DATA_CONFIG_MAP."""
 
     # Training parameters
-    batch_size: int = 1
+    batch_size: int = 128
     """Batch size per GPU for training."""
 
-    max_steps: int = 10000
+    max_steps: int = 100000
     """Maximum number of training steps."""
 
-    num_gpus: int = 1
+    num_gpus: int = 8
     """Number of GPUs to use for training."""
 
-    save_steps: int = 500
+    save_steps: int = 4000
     """Number of steps between saving checkpoints."""
 
     # Model parameters
     model_cfg_path: str = "model_config"
     """Path or HuggingFace model ID for the base model."""
 
-    tune_llm: bool = False
+    tune_llm: int = 0
     """Whether to fine-tune the language model backbone."""
 
-    tune_visual: bool = False
+    tune_visual: bool = True
     """Whether to fine-tune the vision tower."""
 
     tune_projector: bool = True
@@ -75,7 +80,7 @@ class Config:
     tune_diffusion_model: bool = True
     """Whether to fine-tune the diffusion model."""
 
-    resume: bool = False
+    resume: str = ""
     """Whether to resume from a checkpoint."""
 
     # Advanced training parameters
@@ -88,7 +93,7 @@ class Config:
     warmup_ratio: float = 0.05
     """Ratio of total training steps used for warmup."""
 
-    lora_rank: int = 0
+    lora_rank: int = 32
     """Rank for the LORA model."""
 
     lora_alpha: int = 16
@@ -117,41 +122,33 @@ class Config:
 
 
 def main(config: Config):
-    """Main training function."""
+    # custom config editing
+    config.output_dir = os.path.join(config.output_dir, config.exp_name)
+    config.eval_steps = config.save_steps // 4
+        
     # ------------ step 1: load dataset ------------
     data_config = DATA_CONFIG_MAP[config.data_config]
-    modality_configs = data_config.modality_config()  # TODO
-    '''
-    train_dataset = LeRobotSingleDataset(
+    # modality_configs = data_config.modality_config()
+
+    data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
+    train_dataset, eval_dataset = load_cascaded_dataset(
         dataset_path=config.dataset_path,
-        modality_configs=modality_configs,
-        transforms=transforms,
-        video_backend=config.video_backend,
+        dataset_list=config.dataset_list.split(','),
+        split_portion=config.split_portion,
+        data_config=data_config,
+        data_storage_kwargs=data_storage_kwargs,
+        test=False,
+        debug=config.debug,
     )
-    '''
-    train_dataset_name_list = [
-        "hoi4d",  # zhan
-        # "oakink2",  # zhan_4t 
-    ]
-    train_dataset_list, eval_dataset_list = [], []
-    for each in train_dataset_name_list:
-        train_dataset_name = each.upper()
-        train_dataset = eval(f"{train_dataset_name}Dataset")()
-        train_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(train=0.95))
-        train_dataset_list.append(train_dataset)
-        eval_dataset = eval(f"{train_dataset_name}Dataset")()
-        eval_dataset.initialize_data_storage(eval(f"{train_dataset_name}Storage"), dict(window_size=data_config.action_horizon, side=data_config.side), split=dict(eval=0.95))
-        eval_dataset_list.append(eval_dataset)
-    transform_meta = DatasetMetadata.model_validate(json.load(open('model_config/metadata.json', "r")))  # TODO
-    train_transforms = data_config.transform(split='train')
-    train_transforms.set_metadata(transform_meta)
-    train_dataset = CascadedDatasetWithTransform(train_dataset_list, train_transforms)
-    eval_transforms = data_config.transform(split='eval')
-    eval_transforms.set_metadata(transform_meta)
-    eval_dataset = CascadedDatasetWithTransform(eval_dataset_list, eval_transforms)
+
     # ------------ step 2: load model ------------
     with open(Path(config.model_cfg_path) / "config.json", "r") as f:
         model_config = json.load(f)
+    # customize
+    model_config.update({
+        "depthanything_path": config.depthanything_path,
+        "incorporate_depth": config.incorporate_depth,
+    })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")
     model.backbone.set_trainable_parameters(tune_visual=config.tune_visual, tune_llm=config.tune_llm)
     model.action_head.set_trainable_parameters(tune_projector=config.tune_projector, tune_diffusion_model=config.tune_diffusion_model)
@@ -178,9 +175,8 @@ def main(config: Config):
         per_device_train_batch_size=config.batch_size,
         gradient_accumulation_steps=1,
         dataloader_pin_memory=True,
-        # TODO
-        dataloader_num_workers=0, #config.dataloader_num_workers,
-        dataloader_persistent_workers=False,#True,
+        dataloader_num_workers=config.dataloader_num_workers if not config.debug else 0,
+        dataloader_persistent_workers=not config.debug,
         optim="adamw_torch",
         adam_beta1=0.95,
         adam_beta2=0.999,
@@ -197,13 +193,13 @@ def main(config: Config):
         save_total_limit=8,
         report_to=config.report_to,
         seed=42,
-        ddp_find_unused_parameters=False,
+        ddp_find_unused_parameters=True, # for parallel
         ddp_bucket_cap_mb=100,
         torch_compile_mode=None,
         # eval
         do_eval=True,
         evaluation_strategy="steps",   # epoch
-        eval_steps=config.save_steps,  # when evaluation_strategy is "steps"
+        eval_steps=config.eval_steps,  # when evaluation_strategy is "steps"
         per_device_eval_batch_size=config.batch_size,
         label_names=["action"],
     )
@@ -233,13 +229,11 @@ if __name__ == "__main__":
         print(f"{key}: {value}")
     print("=" * 50 + "\n")
 
-
     # Validate GPU configuration
     available_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     assert config.num_gpus <= available_gpus, f"Number of GPUs requested ({config.num_gpus}) is greater than the available GPUs ({available_gpus})"
     assert config.num_gpus > 0, "Number of GPUs must be greater than 0"
     print(f"Using {config.num_gpus} GPUs")
-
     if config.num_gpus == 1:
         # Single GPU mode - set CUDA_VISIBLE_DEVICES=0
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -252,8 +246,8 @@ if __name__ == "__main__":
             # Multi-GPU mode - use torchrun
             script_path = Path(__file__).absolute()
             # Remove any existing CUDA_VISIBLE_DEVICES from environment
-            if "CUDA_VISIBLE_DEVICES" in os.environ:
-                del os.environ["CUDA_VISIBLE_DEVICES"]
+            # if "CUDA_VISIBLE_DEVICES" in os.environ:
+            #     del os.environ["CUDA_VISIBLE_DEVICES"]
 
             # Use subprocess.run instead of os.system
             cmd = [
@@ -261,7 +255,7 @@ if __name__ == "__main__":
                 "--standalone",
                 f"--nproc_per_node={config.num_gpus}",
                 "--nnodes=1",  # default to 1 node for now
-                str(script_path),
+                "-m", "scripts.train"  # str(script_path),
             ]
 
             # Convert config to command line arguments

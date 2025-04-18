@@ -35,7 +35,7 @@ class TrainRunner:
         training_args: TrainingArguments,
         train_dataset,
         eval_dataset,
-        resume_from_checkpoint: bool = False,
+        resume_from_checkpoint: str = "",
     ):
         self.training_args = training_args
         self.exp_cfg_dir = Path(os.path.join(training_args.output_dir, "experiment_cfg"))
@@ -91,7 +91,7 @@ class TrainRunner:
                 )
             training_args.report_to = ["wandb"]
         else:  # Default to tensorboard
-            tensorboard_dir = Path(training_args.output_dir) / "runs"
+            tensorboard_dir = Path(training_args.output_dir)
             tensorboard_dir.mkdir(parents=True, exist_ok=True)
             print(f"TensorBoard logs will be saved to: {tensorboard_dir}")
             training_args.report_to = ["tensorboard"]
@@ -146,7 +146,7 @@ class TrainRunner:
 
     def train(self):
         # Start training
-        self.trainer.train(resume_from_checkpoint=self.resume_from_checkpoint)
+        self.trainer.train(resume_from_checkpoint=False if not self.resume_from_checkpoint else self.resume_from_checkpoint)
         self.trainer.save_state()
 
         safe_save_model_for_hf_trainer(

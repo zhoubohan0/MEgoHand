@@ -580,3 +580,25 @@ class VideoToNumpy(VideoTransform):
             numpy array of shape [T, H, W, C] in uint8 format
         """
         return (frames.permute(0, 2, 3, 1) * 255).to(torch.uint8).cpu().numpy()
+
+
+class VideoNormalize(VideoTransform):
+    mean: list[float] = Field(
+        default_factory=lambda: [0.485, 0.456, 0.406],
+        description="Mean for normalization (per channel, RGB)",
+    )
+    std: list[float] = Field(
+        default_factory=lambda: [0.229, 0.224, 0.225],
+        description="Standard deviation for normalization (per channel, RGB)",
+    )
+
+    def get_transform(self, mode: Literal["train", "eval"] = "train") -> Callable:
+        """
+        Returns normalization transform for both train and eval mode.
+        """
+        if self.backend == "torchvision":
+            return T.Normalize(mean=self.mean, std=self.std)
+        elif self.backend == "albumentations":
+            return A.Normalize(mean=self.mean, std=self.std, always_apply=True)
+        else:
+            raise ValueError(f"Backend {self.backend} not supported")

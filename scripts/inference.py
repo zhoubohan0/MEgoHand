@@ -101,11 +101,25 @@ step_data["action.trans"] = np.zeros((16, 3), dtype=np.float32)
 step_data['annotation.human.action.task_description'] = ['pick the squash from the counter and place it in the plate']
 '''
 
-# TODO: dataset
 test_dataset_name_list = [
-    "hoi4d",  # zhan
-    # "fpha",  # zhan
-    # "oakink2",  # zhan_4t 
+    # "TACO",       # zbh (135G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/ZBH/dataset/TACO/TACO-overall' -t /mnt/vepfs/zbh/MHMP/datasets/TACO -e "./2D_Segmentation.zip ./README.md"
+    # "Arctic",     # zhan_4t (600G) 
+    # "oakink2",    # zhan_4t (2.1T) 
+    # "H2O",        # zhan_4t (751G) done
+    # "hoi4d",      # zhan (178G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/zhan/DATASET/HOI4D' -t /mnt/vepfs/zbh/MHMP/datasets -e "camera_params definitions HOI4D_CAD_Model_for_release HOI4D_release prepare_4Dseg utils README.md task_list.txt"
+    "fpha",         # zhan (28G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/zhan/DATASET/FPHA.tar.gz'  -t /mnt/vepfs/zbh/MHMP/datasets -e ""
+    # "hot3d",      # T9 (247G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p /media/ps/T7/HOT3D.tar.gz
+    ##------------------------------
+    # -----------------------
+    # "Assembly101", # T9
+    # -----------------------
+    # "ConcatPose", # zbh
+    # "DexYCB", # zbh
+    # "GRAB", # zbh
+    # "HIMO", # zbh
+    # "HO3D", # zbh
+    # "HOGraspNet", # zbh
+    # -----------------------
 ]
 test_dataset_list = []
 for each in test_dataset_name_list:

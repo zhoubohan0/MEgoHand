@@ -8,13 +8,15 @@ Makefile
 Dockerfile
 pyproject.toml
 
+offline_visualization
 logs
 demo_data
 getting_started
 media
 tests
-
+datasets
 
 GR00T-N1-2B
 utils/transform.py
 manopth/
+gr00t/model/backbone/depth_anything_v2/checkpoints

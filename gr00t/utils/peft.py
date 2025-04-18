@@ -7,7 +7,7 @@ def _wrap_forward(model):
         backbone_inputs, action_inputs = model.prepare_input(inputs)
         backbone_outputs = model.backbone(backbone_inputs)
         action_head_outputs = model.action_head(backbone_outputs, action_inputs)
-        model.validate_data(action_head_outputs, backbone_outputs, is_training=True)
+        # model.validate_data(action_head_outputs, backbone_outputs, is_training=True)
         return action_head_outputs
 
     model.forward = _forward
