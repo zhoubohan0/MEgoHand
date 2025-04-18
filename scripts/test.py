@@ -175,8 +175,6 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 pred_mano_trans.append(pred_mano_trans_world)
             pred_mano_rot9d, pred_mano_trans = torch.stack(pred_mano_rot9d), torch.stack(pred_mano_trans)  # (T, W, 3, 3), (T, W, 3)
             
-            # TODO:
-            # adjacent rotation interpolation: Bézier curves / cubic spline / spherical linear interpolation
             # rotation sequence smooth: temporal convolution, followed by an orthogonalisation
             indices = (torch.arange(T).unsqueeze(1) - torch.arange(window_size).unsqueeze(0) + (window_size - 1)).flip(1)
             pred_mano_theta_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth = [], [], []
@@ -187,7 +185,7 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 pred_mano_theta_chunk_t = pred_mano['theta9d'][indices == t]  # at most (W, 15, 3, 3)
                 chunk_size = len(pred_mano_rot9d_chunk_t)
                 '''
-                weights = torch.exp(-1.5 * torch.arange(chunk_size, dtype=torch.float32, device=pred_mano_trans_chunk_t.device))  # TODO
+                weights = torch.exp(-1.5 * torch.arange(chunk_size, dtype=torch.float32, device=pred_mano_trans_chunk_t.device))
                 weights = weights / weights.sum() 
                 '''
                 weights = torch.ones(chunk_size, device=pred_mano_trans_chunk_t.device) / chunk_size

@@ -342,7 +342,7 @@ class FlowmatchingActionHead(nn.Module):
 
         # Slice out only the action portion of pred and target.
         action_mask = action_input['action_mask']
-        # TODO: loss
+        # TODO: loss design
         loss = F.smooth_l1_loss(pred_actions, velocity, reduction="none") * action_mask
         loss = loss.sum() / action_mask.sum()
         output_dict = dict(loss=loss)
