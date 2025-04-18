@@ -24,7 +24,7 @@ from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
 from gr00t.utils.util import default_collate_fn, mse, glance_dict
 from mhmp_vis.dataset_loader import *
-from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist, decode_absolute_pose_from_relative, batch_rot2aa, get_pose12d_from_camera_to_world
+from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist, decode_absolute_pose_from_relative, batch_rot2aa, get_pose12d_from_camera_to_world, batch_rodrigues
 from mhmp_vis.utils.util import mano_forward
 from mhmp_vis.utils.pc import get_pc_from_world_to_camera, get_pc_from_camera_to_world
 from mhmp_vis.dataset_visualizer.general_offline_visualizer import offline_render
@@ -60,10 +60,14 @@ def cal_metrics(pred, true, return_pred=False):
         'action.trans': mse(pred['action.trans'],true['action.trans']),
     }
     if return_pred:
-        pred_theta = batch_rot2aa(pred_theta_flatten_9d).view(B, T, 45)      
+        pred_theta = batch_rot2aa(pred_theta_flatten_9d).view(B, T, 45)    
+        pred_theta9d = pred_theta_flatten_9d.reshape(B, T, 15, 3, 3)  
+        pred_rot = batch_rot2aa(pred_rot_flatten_9d).view(B, T, 3)
         pred_rot9d = pred_rot_flatten_9d.view(B, T, 3, 3) 
         pred_mano_param = dict(
             theta=pred_theta,           # (B, T, 45)
+            theta9d=pred_theta9d,       # (B, T, 15, 3, 3)
+            rot=pred_rot,               # (B, T, 3)
             rot9d=pred_rot9d,           # (B, T, 3, 3)
             trans=pred['action.trans']  # (B, T, 3)
         )
@@ -93,7 +97,7 @@ def conduct_testing(cascaded_dataset, policy, batch_size=8192):
             print(f"{i+1} Batch Average: {avg_mean_metrics}")
 
 
-def conduct_visualization(cascaded_dataset, policy, per_vis=1):
+def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
     def truncate_vis_data(vis_data, trunk_len):
         vis_data_copy = vis_data.copy()
         for k in ['image_filenames', 'cam_left_hand_verts', 'cam_right_hand_verts', 'world_left_hand_verts', 'world_right_hand_verts', 'extrinsic_matrix_sequence']:
@@ -112,7 +116,7 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=1):
          all_trajectory_index[str(dataset)] = np.array(dataset.data_storage.valid_trajectory_range) + cascaded_dataset.cumsum_length_list[dataset_idx]
     # Visualize K trajectories for each dataset 
     for dataset_name, trajectory_range in all_trajectory_index.items():
-        vis_trajectory_range = trajectory_range[np.random.choice(len(trajectory_range), per_vis, replace=False)] if len(trajectory_range) > per_vis else trajectory_range
+        vis_trajectory_range = trajectory_range[np.random.choice(len(trajectory_range), per_vis, replace=False)] if len(trajectory_range) > per_vis and per_vis!= -1 else trajectory_range
         for i_traj in range(len(vis_trajectory_range)):
             b, e = vis_trajectory_range[i_traj]
             T = e - b
@@ -121,6 +125,12 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=1):
             gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
             pred_action = policy.get_action(step_data)
             batch_avg_metrics, pred_mano = cal_metrics(pred_action, gt_action, return_pred=True)
+            '''
+            pred_mano
+            - theta: (T, W, 45)
+            - rot9d: (T, W, 3, 3)
+            - trans: (T, W, 3)
+            '''
             print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
             ## visualize
             dataset_idx, sample_idx = cascaded_dataset.get_dataset_sample_id_by_idx(b)
@@ -130,67 +140,73 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=1):
             task_name = storage_data['task_name'][0][0]
             vis_data = dataset.task_example_for_vis(task_name)
             assert all([x in vis_data['save_video_file'] for x in task_name.split('/')])
-            timestep = 0 #np.random.choice(window_size)  # t0 in [0, window_size)
             # save original video
             # offline_render(**vis_data)
-            vis_data['save_video_file'] = f'_pred{window_size}'.join(os.path.splitext(vis_data['save_video_file']))
+            vis_data['save_video_file'] = f'_avg'.join(os.path.splitext(vis_data['save_video_file']))
             # overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts'
+            mano_theta9d = batch_rodrigues(torch.Tensor(storage_data['state.theta']).view(-1,3).cuda()).view(-1,15,3,3)
             mano_beta = torch.Tensor(storage_data['state.beta']).squeeze(1).cuda()
             init_rot = torch.Tensor(storage_data['state.rot']).squeeze(1).cuda()
             init_trans = torch.Tensor(storage_data['state.trans']).squeeze(1).cuda()
             extrinsic_matrix_sequence = torch.Tensor(vis_data['extrinsic_matrix_sequence']).cuda()
-            while timestep < T:
-                pred_mano_theta = pred_mano['theta'][timestep]  # (W, 45)
-                goal_timestep = timestep + window_size
+            
+            # absolute world hand wrist pose
+            ref_state_rot_world, ref_state_trans_world = get_pose12d_from_camera_to_world(
+                torch.Tensor(storage_data['state.rot'].squeeze(1)).cuda(),
+                torch.Tensor(storage_data['state.trans'].squeeze(1)).cuda(),
+                extrinsic_matrix_sequence[:T]
+            )
+                            
+            pred_mano_rot9d, pred_mano_trans = [], []
+            for t in range(T):
                 # relative pose -> absolute cam pose
-                pred_mano_rot9d, pred_mano_trans = decode_absolute_pose_from_relative(  # (W, 3, 3), (W, 3)
-                    init_rot[[timestep]],
-                    init_trans[[timestep]],
-                    pred_mano['rot9d'][timestep], 
-                    pred_mano['trans'][timestep], 
+                pred_mano_rot9d_t, pred_mano_trans_t = decode_absolute_pose_from_relative(  # (W, 3, 3), (W, 3)
+                    init_rot[[t]],
+                    init_trans[[t]],
+                    pred_mano['rot9d'][t], 
+                    pred_mano['trans'][t], 
                 )
                 # absolute cam pose -> absolute world pose
-                pred_mano_rot9d_world, pred_mano_trans_chunk = get_pose12d_from_camera_to_world(  # (W, 3, 3), (W, 3)
-                    pred_mano_rot9d[:window_size], pred_mano_trans[:window_size],
-                    extrinsic_matrix_sequence[timestep+1:goal_timestep+1],
+                pred_mano_rot9d_world, pred_mano_trans_world = get_pose12d_from_camera_to_world(  # (W, 3, 3), (W, 3)
+                    pred_mano_rot9d_t, pred_mano_trans_t,
+                    extrinsic_matrix_sequence[t+1:t+window_size+1],
                 )
-                # TODO:
-                # adjacent rotation interpolation: Bézier curves / cubic spline / spherical linear interpolation
-                # rotation sequence smooth:  temporal convolution, followed by an orthogonalisation
-                pred_mano_rot_chunk = batch_rot2aa(pred_mano_rot9d_world)                       # (W, 3)
-                pred_mano_theta_chunk = pred_mano_theta[:window_size]                           # (W, 45)
-                pred_mano_beta_chunk = repeat(mano_beta[timestep], 'L -> B L', B=window_size)   # (W, 10)
-                # absolute world pose -> hand vertices
+                pred_mano_rot9d.append(pred_mano_rot9d_world)
+                pred_mano_trans.append(pred_mano_trans_world)
+            pred_mano_rot9d, pred_mano_trans = torch.stack(pred_mano_rot9d), torch.stack(pred_mano_trans)  # (T, W, 3, 3), (T, W, 3)
+            
+            # TODO:
+            # adjacent rotation interpolation: Bézier curves / cubic spline / spherical linear interpolation
+            # rotation sequence smooth: temporal convolution, followed by an orthogonalisation
+            indices = (torch.arange(T).unsqueeze(1) - torch.arange(window_size).unsqueeze(0) + (window_size - 1)).flip(1)
+            pred_mano_theta_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth = [], [], []
+            L = T + window_size - 1
+            for t in range(L):
+                pred_mano_rot9d_chunk_t = pred_mano_rot9d[indices == t]  # at most (W, 3, 3)
+                pred_mano_trans_chunk_t = pred_mano_trans[indices == t]  # at most (W, 3)
+                pred_mano_theta_chunk_t = pred_mano['theta9d'][indices == t]  # at most (W, 15, 3, 3)
+                chunk_size = len(pred_mano_rot9d_chunk_t)
                 '''
-                # evaluate GT mano params
-                (hand_theta45, hand_beta, hand_rot, hand_trans) = torch.load('/mnt/vepfs/zbh/MHMP/right_hand_theta.pt')
-                state_rot_world, state_trans_world = get_pose12d_from_camera_to_world(
-                    torch.Tensor(storage_data['state.rot'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
-                    torch.Tensor(storage_data['state.trans'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
-                    extrinsic_matrix_sequence[timestep+1:goal_timestep+1]
-                )
-                breakpoint()
-                future_hand_vertices = mano_forward(
-                    torch.Tensor(storage_data['state.theta'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
-                    torch.Tensor(storage_data['state.beta'].squeeze(1)[timestep+1:goal_timestep+1]).cuda(),
-                    batch_rot2aa(state_rot_world),
-                    state_trans_world,
-                    side,
-                )[0]
-                assert torch.allclose(torch.Tensor(vis_data[f'world_{side}_hand_verts'][timestep+1:goal_timestep+1]).cuda(), future_hand_vertices)
+                weights = torch.exp(-1.5 * torch.arange(chunk_size, dtype=torch.float32, device=pred_mano_trans_chunk_t.device))  # TODO
+                weights = weights / weights.sum() 
                 '''
-                pred_hand_vertices = mano_forward(pred_mano_theta_chunk, pred_mano_beta_chunk, pred_mano_rot_chunk, pred_mano_trans_chunk, side)[0]
-                vis_data[f'world_{side}_hand_verts'][timestep+1:goal_timestep+1] = pred_hand_vertices.cpu().numpy()
-                # offline_render(**truncate_vis_data(vis_data, goal_timestep+1))
-                '''
-                # for interactive render
-                pred_hand_vertices_cam = get_pc_from_world_to_camera(pred_hand_vertices, extrinsic_matrix_sequence[timestep+1:goal_timestep+1]) 
-                vis_data[f'cam_{side}_hand_verts'][timestep+1:goal_timestep+1] = pred_hand_vertices_cam.cpu().numpy()
-                '''
-                timestep = goal_timestep
+                weights = torch.ones(chunk_size, device=pred_mano_trans_chunk_t.device) / chunk_size
+                U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_rot9d_chunk_t * weights.view(-1,1,1), dim=0))
+                pred_mano_rot9d_smooth.append(U @ Vh)  # (3, 3)
+                U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_theta_chunk_t * weights.view(-1,1,1,1), dim=0))
+                pred_mano_theta_smooth.append(U @ Vh)  # (15, 3, 3)
+                pred_mano_trans_smooth.append(torch.sum(pred_mano_trans_chunk_t * weights.view(-1,1), dim=0))  # (3)
+                # print(f'[{t}/{L}]')
+                # print(f'origin: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_chunk_t[0]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_chunk_t[0]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta_chunk_t[0]):.6f}')
+                # print(f'smooth: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_smooth[t]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_smooth[t]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta_smooth[t]):.6f}')
+            pred_mano_rot9d_smooth = batch_rot2aa(torch.stack(pred_mano_rot9d_smooth)).view(L,3)   # (L, 3, 3)
+            pred_mano_trans_smooth = torch.stack(pred_mano_trans_smooth)  # (L, 3)
+            pred_mano_theta_smooth = batch_rot2aa(torch.stack(pred_mano_theta_smooth).view(-1,3,3)).view(L,45)  # (L, 45)
+            pred_mano_beta_smooth = repeat(mano_beta[0], 'L -> B L', B=L)  # (L, 10)
+            pred_hand_vertices = mano_forward(pred_mano_theta_smooth, pred_mano_beta_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth, side)[0]
+            vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
             # visualize
             offline_render(**vis_data)
-            breakpoint()
 
 
 if __name__ == "__main__":
