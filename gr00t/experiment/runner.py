@@ -27,6 +27,10 @@ from gr00t.model.gr00t_n1 import GR00T_N1
 from gr00t.model.transforms import DefaultDataCollatorGR00T
 from gr00t.utils.experiment import CheckpointFormatCallback, safe_save_model_for_hf_trainer
 
+def safe_collate(batch):
+    # keep key/value both is not None 
+    batch = [b for b in batch if b is not None and all(v is not None for v in b.values())]
+    return default_collate(batch) if batch else None
 
 class TrainRunner:
     def __init__(
@@ -49,7 +53,7 @@ class TrainRunner:
             training_args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            data_collator=default_collate,#DefaultDataCollatorGR00T(processor=EagleProcessor(),),
+            data_collator=safe_collate,#DefaultDataCollatorGR00T(processor=EagleProcessor(),),
             compute_dtype=torch.float16 if training_args.bf16 else torch.float32,
         )
         self.trainer = trainer

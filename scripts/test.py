@@ -82,7 +82,7 @@ def conduct_testing(cascaded_dataset, policy, batch_size=8192):
         'action.trans': [],
     }
     test_dataloader = DataLoader(cascaded_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False, collate_fn=default_collate_fn)
-    pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="Testing", unit="batch")
+    pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="Testing", unit="batch", leave=False, dynamic_ncols=True, position=0)
     for i, step_data in pbar:
         # inference
         gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}

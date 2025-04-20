@@ -123,10 +123,11 @@ def main(config: Config):
         dataset = eval(f"{dataset_name}Dataset")(os.path.join(config.dataset_path, dataset_name))
         dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), data_storage_kwargs, split=dict(train=1.0))
         statistics_dataset_list.append(dataset)
-    
     cascaded_dataset = CascadedDataset(statistics_dataset_list)
     statistics = cascaded_dataset.calculate_running_statistics(batch_size=8192, num_workers=8)
-    metadata_json = f'model_config/metadata_{config.dataset_list.lower()}_relative.json'
+    metadata_json = f'model_config/metadata/{config.dataset_list.lower()}_relative.json'
+    if not os.path.exists(metadata_json):
+        os.system(f"cp model_config/metadata.json {metadata_json}")
     with open(metadata_json, "r") as f:
         metadata = json.load(f)
     # update
@@ -136,7 +137,6 @@ def main(config: Config):
     print(f"Statistics calculated and saved to {metadata_json}")
     breakpoint()
     
-
 if __name__ == "__main__":
     # Parse arguments using tyro
     config = tyro.cli(Config)
@@ -148,7 +148,6 @@ if __name__ == "__main__":
     for key, value in vars(config).items():
         print(f"{key}: {value}")
     print("=" * 50 + "\n")
-
 
     # Validate GPU configuration
     available_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1

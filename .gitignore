@@ -8,7 +8,7 @@ Makefile
 Dockerfile
 pyproject.toml
 
-offline_visualization
+**/offline_visualization
 logs
 demo_data
 getting_started
