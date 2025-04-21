@@ -117,7 +117,7 @@ def main(config: Config):
     data_config = DATA_CONFIG_MAP[config.data_config]
     
     statistics_dataset_list = []
-    data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
+    data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=True)  # data_config.is_render_depth
     for each in config.dataset_list.split(','):
         dataset_name = each.upper()
         dataset = eval(f"{dataset_name}Dataset")(os.path.join(config.dataset_path, dataset_name))
