@@ -288,8 +288,7 @@ class DiT(ModelMixin, ConfigMixin):
             all_hidden_states.append(hidden_states)
 
         # Output processing
-        conditioning = temb
-        shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
+        shift, scale = self.proj_out_1(F.silu(temb)).chunk(2, dim=1)
         hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
         if return_all_hidden_states:
             return self.proj_out_2(hidden_states), all_hidden_states

@@ -221,7 +221,7 @@ class EagleBackbone(nn.Module):
         self.set_frozen_modules_to_eval_mode()
         if self.incorporate_depth:
             depth_true = vl_input["depth.ego_view"].squeeze(1)  # (B, 1, H, W)
-            depth_feature=self.depth_encoder(depth_true)        # (B, 64, 2048), or self.depth_encoder(depth_pred_rescale)
+            depth_feature = self.depth_encoder(depth_true)        # (B, 64, 2048), or self.depth_encoder(depth_pred_rescale)
         else:
             depth_feature = None
         embeddings = get_embeddings(
