@@ -71,7 +71,7 @@ class Config:
     tune_llm: int = 0
     """Whether to fine-tune the language model backbone."""
 
-    tune_visual: bool = True
+    tune_visual: int = 1
     """Whether to fine-tune the vision tower."""
 
     tune_projector: bool = True

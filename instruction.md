@@ -30,3 +30,11 @@ TypeError: expected str, bytes or os.PathLike object, not NoneType
 ```bash
 export CONDA_SHLVL=0
 ```
+
+push and pull:
+```bash
+cd mhmp_vis
+commit_message="fix tiny"; git add . ;  git commit -m $commit_message ; git push
+cd - 
+commit_message="fix tiny"; git add . ;  git commit -m $commit_message ; git push
+```

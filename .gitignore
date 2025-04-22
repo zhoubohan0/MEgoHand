@@ -15,6 +15,7 @@ getting_started
 media
 tests
 datasets
+third_party
 
 GR00T-N1-2B
 utils/transform.py

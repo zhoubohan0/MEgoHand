@@ -9,6 +9,7 @@ debug=0
 device="0"
 lora_rank=0
 tune_llm=0
+tune_visual=1
 batch_size=150
 resume=""
 
@@ -53,6 +54,10 @@ while [[ $# -gt 0 ]]; do
       tune_llm="$2"
       shift 2
       ;;
+    -tune_visual)
+      tune_visual="$2"
+      shift 2
+      ;;
     -batch_size)
       batch_size="$2"
       shift 2
@@ -68,7 +73,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, incorporate_depth: $incorporate_depth, debug: $debug, device: $device, lora_rank: $lora_rank, tune_llm: $tune_llm, batch_size: $batch_size, resume: $resume"
+echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, incorporate_depth: $incorporate_depth, debug: $debug, device: $device, lora_rank: $lora_rank, tune_llm: $tune_llm, tune_visual: $tune_visual, batch_size: $batch_size, resume: $resume"
 
 CUDA_VISIBLE_DEVICES=$device python -m scripts.train \
   --num_gpus $(echo $device | tr -cd ',' | wc -c | awk '{print $1 + 1}') \
@@ -80,6 +85,7 @@ CUDA_VISIBLE_DEVICES=$device python -m scripts.train \
   --dataset_list "$dataset_list" \
   --lora_rank "$lora_rank" \
   --tune_llm "$tune_llm" \
+  --tune_visual "$tune_visual" \
   --batch_size "$batch_size" \
   --resume "$resume" \
   # Uncomment the following line if you want to pass the dataset_list as a list
