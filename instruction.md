@@ -31,10 +31,20 @@ TypeError: expected str, bytes or os.PathLike object, not NoneType
 export CONDA_SHLVL=0
 ```
 
-push and pull:
+push:
+```bash
+commit_message="fix tiny"
+cd mhmp_vis
+git add . ;  git commit -m $commit_message ; git push
+cd - 
+git add . ;  git commit -m $commit_message ; git push
+```
+pull:
 ```bash
 cd mhmp_vis
-commit_message="fix tiny"; git add . ;  git commit -m $commit_message ; git push
+export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 all_proxy=socks5://127.0.0.1:7890
+git pull
 cd - 
-commit_message="fix tiny"; git add . ;  git commit -m $commit_message ; git push
+export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 all_proxy=socks5://127.0.0.1:7890
+git pull
 ```
