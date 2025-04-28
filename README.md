@@ -13,12 +13,22 @@ export dataset=fpha
 export task="Subject_1/charge_cell_phone/1/106"
 
 export dataset=hoi4d
-export task="ZY20210800001/H1/C1/N19/S100/s02/T1/"
+export task="ZY20210800001/H1/C1/N19/S100/s02/T1"
 
 export dataset=taco
 export task="(dust, roller, pan)/20230927_032"
 
-...
+export dataset=h2o
+export task="subject1/o1/7/cam4"
+
+export dataset=arctic
+export task="s01/box_use_02"
+
+export dataset=hot3d
+export task="train_aria/clip-002832"
+
+export dataset=oakink2
+export task="scene_04__A008/seq__ff070467cd91f735acab__2023-04-23-11-28-29"
 
 python -m pdb -m dataset_visualizer.general_offline_visualizer -d ${dataset} -t ${task}
 ```

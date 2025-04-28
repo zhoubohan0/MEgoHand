@@ -22,7 +22,7 @@ from transformers.feature_extraction_utils import BatchFeature
 import torchvision.models as models
 from einops import repeat, rearrange
 import gr00t
-from gr00t.utils.util import depth_to1, resize, mse, minmaxscale
+from gr00t.utils.util import clip_depth, resize, mse, minmaxscale
 from gr00t.model.transforms import EAGLE_KEYS
 from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificValues, reshape_model_embeddings
 from .depth_anything_v2.dpt import DepthAnythingV2
@@ -237,7 +237,7 @@ class EagleBackbone(nn.Module):
         
         if self.depth_anything_model is not None: # depth estimation
             depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1))
-            depth_pred_rescale = resize(depth_to1(depth_pred))  # clip, to1 (TODO: reletive (x - x.min()) / (x.max() - x.min()))
+            depth_pred_rescale = resize(clip_depth(depth_pred))  # clip, to1 (TODO: reletive (x - x.min()) / (x.max() - x.min()))
             vlm_output["depth_loss"] = mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
             '''
             # visualization

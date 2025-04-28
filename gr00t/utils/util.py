@@ -43,8 +43,8 @@ class RunningMeanStdMinMax(jit.ScriptModule):
             'q99':self.min + (self.max - self.min) * 0.99,
         }
 
-def depth_to1(x, max_depth=1500):
-    return x.clip(0, max_depth) / max_depth
+def clip_depth(x, max_depth=1.0):  # m
+    return x.clip(0, max_depth)
 
 def resize(x, size=(256,256)):
     '''
