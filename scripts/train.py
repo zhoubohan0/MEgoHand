@@ -30,7 +30,6 @@ from gr00t.utils.peft import get_lora_model
 from mhmp_vis.dataset_loader import load_cascaded_dataset
 
 
-
 @dataclass
 class Config:
     # customize

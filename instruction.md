@@ -33,9 +33,9 @@ export CONDA_SHLVL=0
 
 push:
 ```bash
-commit_message="fix tiny"
-cd mhmp_vis
-git add . ;  git commit -m $commit_message ; git push
+commit_message="fix tiny" 
+cd mhmp_vis 
+git add . ;  git commit -m $commit_message ; git push 
 cd - 
 git add . ;  git commit -m $commit_message ; git push
 ```
