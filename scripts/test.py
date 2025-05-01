@@ -32,7 +32,25 @@ from mhmp_vis.dataset_visualizer.general_offline_visualizer import offline_rende
 
 warnings.simplefilter("ignore", category=FutureWarning)
 
-def cal_metrics(pred, true, return_pred=False):
+def decode_pred(pred):
+    pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
+    B, T = pred['action.trans'].shape[:2]
+    pred_theta_flatten_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
+    pred_theta = batch_rot2aa(pred_theta_flatten_9d).view(B, T, 45)    
+    pred_theta9d = pred_theta_flatten_9d.reshape(B, T, 15, 3, 3)  
+    pred_rot_flatten_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
+    pred_rot = batch_rot2aa(pred_rot_flatten_9d).view(B, T, 3)
+    pred_rot9d = pred_rot_flatten_9d.view(B, T, 3, 3) 
+    return dict(
+        theta=pred_theta,           # (B, T, 45)
+        theta9d=pred_theta9d,       # (B, T, 15, 3, 3)
+        rot=pred_rot,               # (B, T, 3)
+        rot9d=pred_rot9d,           # (B, T, 3, 3)
+        trans=pred['action.trans']  # (B, T, 3)
+    )
+
+
+def cal_metrics(pred, true):
     assert all(isinstance(pred[key], type(true[key])) for key in pred.keys()), "The keys of pred and true must be the same."
     pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
     true = {k: torch.as_tensor(v).cuda() for k, v in true.items()}
@@ -48,7 +66,7 @@ def cal_metrics(pred, true, return_pred=False):
         action.trans: torch.Size([B, T, 3])  
     }
     '''
-    B, T = true['action.trans'].shape[:2]
+    B, T = pred['action.trans'].shape[:2]
     pred_theta_flatten_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
     true_theta_flatten_9d = rot6d_to_rotmat(true['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
     pred_rot_flatten_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
@@ -59,21 +77,8 @@ def cal_metrics(pred, true, return_pred=False):
         'action.rot': rotmat_dist(pred_rot_flatten_9d, true_rot_flatten_9d).mean(),
         'action.trans': mse(pred['action.trans'],true['action.trans']),
     }
-    if return_pred:
-        pred_theta = batch_rot2aa(pred_theta_flatten_9d).view(B, T, 45)    
-        pred_theta9d = pred_theta_flatten_9d.reshape(B, T, 15, 3, 3)  
-        pred_rot = batch_rot2aa(pred_rot_flatten_9d).view(B, T, 3)
-        pred_rot9d = pred_rot_flatten_9d.view(B, T, 3, 3) 
-        pred_mano_param = dict(
-            theta=pred_theta,           # (B, T, 45)
-            theta9d=pred_theta9d,       # (B, T, 15, 3, 3)
-            rot=pred_rot,               # (B, T, 3)
-            rot9d=pred_rot9d,           # (B, T, 3, 3)
-            trans=pred['action.trans']  # (B, T, 3)
-        )
-        return metrics, pred_mano_param
-    else:
-        return metrics 
+    
+    return metrics 
 
 def conduct_testing(cascaded_dataset, policy, batch_size=8192):
     avg_metrics = {
@@ -114,25 +119,28 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
     for dataset_idx in range(len(cascaded_dataset.dataset_list)):
          dataset = cascaded_dataset.dataset_list[dataset_idx]
          all_trajectory_index[str(dataset)] = np.array(dataset.data_storage.valid_trajectory_range) + cascaded_dataset.cumsum_length_list[dataset_idx]
+    breakpoint()
     # Visualize K trajectories for each dataset 
     for dataset_name, trajectory_range in all_trajectory_index.items():
         vis_trajectory_range = trajectory_range[np.random.choice(len(trajectory_range), per_vis, replace=False)] if len(trajectory_range) > per_vis and per_vis!= -1 else trajectory_range
         for i_traj in range(len(vis_trajectory_range)):
             b, e = vis_trajectory_range[i_traj]
             T = e - b
-            ## calculate trajectory loss
+            ## inference
             step_data = default_collate_fn([cascaded_dataset[_] for _ in range(b,e)])
-            gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
             pred_action = policy.get_action(step_data)
-            batch_avg_metrics, pred_mano = cal_metrics(pred_action, gt_action, return_pred=True)
+            ## calculate trajectory loss
+            gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
+            batch_avg_metrics = cal_metrics(pred_action, gt_action)
+            print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
+            ## visualize
+            pred_mano = decode_pred(pred_action)
             '''
             pred_mano
             - theta: (T, W, 45)
             - rot9d: (T, W, 3, 3)
             - trans: (T, W, 3)
             '''
-            print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
-            ## visualize
             dataset_idx, sample_idx = cascaded_dataset.get_dataset_sample_id_by_idx(b)
             dataset = cascaded_dataset.dataset_list[dataset_idx]
             storage_data = default_collate_fn([dataset.index_for_vis(sample_idx+_) for _ in range(T)])
