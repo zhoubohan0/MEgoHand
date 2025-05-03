@@ -85,18 +85,18 @@ test_dataset = load_cascaded_dataset(
 ## Training
 ```bash
 # MHMP-lora (unused)
-# bash bash/train.sh -dataset_list taco -depthanything_path "" -incorporate_depth 0 -exp_name RGB_lora -lora_rank 32 -tune_llm 1 -device "4,5,6,7"  # -resume "logs/RGB_lora/checkpoint-v0" -debug 1
+# bash bash/train.sh -dataset_list taco -depthanything_path "" -exp_name RGB_lora -lora_rank 32 -tune_llm 1 -device "4,5,6,7"  # -resume "logs/RGB_lora/checkpoint-v0" -debug 1
 
 # MHMP
 # on server:
-bash bash/train.sh -batch_size 108 -depthanything_path "" -incorporate_depth 0 -exp_name RGB_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 108 -depthanything_path "" -exp_name RGB_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
 # locally:
-bash bash/train.sh -dataset_path /media/ps/zhan/DATASET/ -depthanything_path "" -incorporate_depth 0 -exp_name ZY_RGB_fpha -lora_rank 0 -tune_llm 0 -tune_visual 0 -device 0 -dataset_list fpha -debug 1 -batch_size 1 
+bash bash/train.sh -dataset_path /media/ps/zhan/DATASET/ -depthanything_path "" -exp_name ZY_RGB_fpha -lora_rank 0 -tune_llm 0 -tune_visual 0 -device 0 -dataset_list fpha -debug 1 -batch_size 1 
 # test and visualize
 bash bash/test.sh -dataset_list taco -split_portion 0.95 -pretrain_ckpt /mnt/vepfs/zbh/MHMP/logs/RGB_notunellm/checkpoint-10000
 
 # MHMP+
-
+bash bash/train.sh -batch_size 75 -depthanything_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -exp_name RGBD_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
 ```
 Visualize logs:
 ```bash

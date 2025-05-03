@@ -36,7 +36,6 @@ class Config:
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: str = ""
     exp_name: str = "runs"
-    incorporate_depth: int = 0
     debug: int = 0
     split_portion: float = 0.95
 
@@ -148,7 +147,6 @@ def main(config: Config):
     # customize
     model_config.update({
         "depthanything_path": config.depthanything_path,
-        "incorporate_depth": config.incorporate_depth,
     })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")
     model.backbone.set_trainable_parameters(tune_visual=config.tune_visual, tune_llm=config.tune_llm)

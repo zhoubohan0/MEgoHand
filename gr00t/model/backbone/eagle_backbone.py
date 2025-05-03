@@ -22,21 +22,22 @@ from transformers.feature_extraction_utils import BatchFeature
 import torchvision.models as models
 from einops import repeat, rearrange
 import gr00t
-from gr00t.utils.util import clip_depth, resize, mse, minmaxscale
+from gr00t.utils.util import clip_depth, resize, l1, minmaxscale
 from gr00t.model.transforms import EAGLE_KEYS
 from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificValues, reshape_model_embeddings
 from .depth_anything_v2.dpt import DepthAnythingV2
 DEFAULT_EAGLE_MODEL_NAME = os.path.join(os.path.dirname(gr00t.__file__), "model", "backbone", "eagle2_hg_model")
 
 class DepthEncoder(nn.Module):
-    def __init__(self):
-        super(DepthEncoder, self).__init__()
+    def __init__(self, device='cuda'):
+        super().__init__()
         resnet = models.resnet50(pretrained=True)
         self.net = nn.Sequential(
             *list(resnet.children())[:-2],
             nn.Flatten(-2)
         )
-        self.mean, self.std = torch.Tensor([0.485, 0.456, 0.406]).cuda().view(1,3,1,1), torch.Tensor([0.229, 0.224, 0.225]).cuda().view(1,3,1,1)
+        self.register_buffer('mean', torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1))
+        self.register_buffer('std', torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1))
 
     def forward(self, x):
         '''
@@ -108,7 +109,6 @@ class EagleBackbone(nn.Module):
         use_local_eagle_hg_model: bool = True,
         # customize
         depthanything_path: str = "",  
-        incorporate_depth: bool = False,
     ):
         super().__init__()
         # load local eagle model and set property
@@ -118,27 +118,28 @@ class EagleBackbone(nn.Module):
         self.model = AutoModel.from_config(config, trust_remote_code=True)
         self.model.neftune_alpha = None
         self.reproject_vision = reproject_vision
-        self.incorporate_depth = incorporate_depth
-
+        self.incorporate_depth = os.path.exists(depthanything_path)
+        
+        local_rank = int(os.environ.get("LOCAL_RANK", 7))  # default to 7 if not set
+        device = torch.device(f"cuda:{local_rank}")
+        
         # cutomize: depth-anything model
-        if os.path.exists(depthanything_path):
+        if self.incorporate_depth:
             depth_anything_model_configs = {
                 'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
                 'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
                 'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
                 'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
             }
-            depth_anything_encoder_type = 'vitl'
+            depth_anything_encoder_type = 'vits'
             self.depth_anything_model = DepthAnythingV2(**depth_anything_model_configs[depth_anything_encoder_type])
             self.depth_anything_model.load_state_dict(torch.load(os.path.join(depthanything_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth'), map_location='cpu'))
-            # TODO: finetune depth anything
-            for param in self.depth_anything_model.parameters():
-                param.requires_grad = False
+            self.depth_anything_model.to(device)
         else:
             self.depth_anything_model = None
 
         # cutomize: depth encoder
-        self.depth_encoder = DepthEncoder()
+        self.depth_encoder = DepthEncoder(device=device).to(device)
 
         # initialize processor
         processor = EagleProcessor(
@@ -217,11 +218,29 @@ class EagleBackbone(nn.Module):
         vl_input["input_ids"]: [B, T1] language token ids
         vl_input["attention_mask"]: [B, T1] all 1
         '''
+        vlm_output = dict()
         # Set frozen module to eval
         self.set_frozen_modules_to_eval_mode()
         if self.incorporate_depth:
-            depth_true = vl_input["depth.ego_view"].squeeze(1)  # (B, 1, H, W)
-            depth_feature = self.depth_encoder(depth_true)        # (B, 64, 2048), or self.depth_encoder(depth_pred_rescale)
+            depth_true = vl_input["depth.ego_view"].squeeze(1)    # (B, 1, H, W)
+            depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1)) # depth estimation
+            depth_pred = resize(clip_depth(depth_pred))  # clip (TODO: reletive (x - x.min()) / (x.max() - x.min()))
+            '''
+            # visualization
+            import matplotlib.pyplot as plt
+            import torch
+            torch.save([depth_pred, depth_true], "depth.pt")
+            plt.imshow(torch.cat([depth_pred, depth_true], dim=-1).detach().squeeze().cpu().numpy(), cmap='viridis')
+            plt.axis('off')
+            plt.savefig("depth_cmp.png")
+            breakpoint()
+            '''
+            # depth_mask: 0 indicates absent or bad depth inputs
+            depth_mask = (depth_true >= 0).any(dim=(1, 2, 3))
+            depth_feature = torch.empty(len(depth_mask), 64, 2048).to(depth_pred.device)       # (B, 64, 2048)
+            depth_feature[depth_mask] = self.depth_encoder(depth_true[depth_mask])
+            depth_feature[~depth_mask] = self.depth_encoder(depth_pred[~depth_mask])
+            vlm_output["depth_loss"] = l1(depth_pred[depth_mask], depth_true[depth_mask])
         else:
             depth_feature = None
         embeddings = get_embeddings(
@@ -230,25 +249,10 @@ class EagleBackbone(nn.Module):
             **{k:v for k,v in vl_input.items() if k in EAGLE_KEYS},
             depth_feature=depth_feature,
         )
-        vlm_output = {
+        vlm_output.update({
             "backbone_features": self.linear(embeddings),           # [B, T2, hidden_size]
             "backbone_attention_mask": vl_input["attention_mask"],
-        }
-        
-        if self.depth_anything_model is not None: # depth estimation
-            depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1))
-            depth_pred_rescale = resize(clip_depth(depth_pred))  # clip, to1 (TODO: reletive (x - x.min()) / (x.max() - x.min()))
-            vlm_output["depth_loss"] = mse(minmaxscale(depth_pred_rescale), minmaxscale(depth_true))
-            '''
-            # visualization
-            import matplotlib.pyplot as plt
-            import torch
-            torch.save([depth_pred_rescale, depth_true], "depth.pt")
-            plt.imshow(torch.cat([depth_pred_rescale, depth_true], dim=-1).detach().squeeze().cpu().numpy(), cmap='viridis')
-            plt.axis('off')
-            plt.savefig("depth_cmp.png")
-            breakpoint()
-            '''
+        })
         
         # return BatchFeature(data=vlm_output)  
         return vlm_output

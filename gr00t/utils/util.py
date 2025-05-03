@@ -43,7 +43,7 @@ class RunningMeanStdMinMax(jit.ScriptModule):
             'q99':self.min + (self.max - self.min) * 0.99,
         }
 
-def clip_depth(x, max_depth=1.0):  # m
+def clip_depth(x, max_depth=2.0):  # m
     return x.clip(0, max_depth)
 
 def resize(x, size=(256,256)):
@@ -99,6 +99,12 @@ def mse(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     Mean Squared Error
     """
     return F.mse_loss(x1, x2, reduction='mean')
+
+def l1(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """
+    L1 Loss
+    """
+    return F.l1_loss(x1, x2, reduction='mean')
 
 def minmaxscale(x: torch.Tensor) -> torch.Tensor:
     """

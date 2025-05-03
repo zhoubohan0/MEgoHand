@@ -240,7 +240,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=8192)
     parser.add_argument("--pretrain_ckpt", type=str, default=None, help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",)
     parser.add_argument("--debug", type=int, default=0)
-    parser.add_argument("--mode", type=str, default='visualization', choices=['testing', 'visualization'], help="mode for testing")
+    parser.add_argument("--mode", type=str, default='vis', choices=['test', 'vis'], help="mode for testing")
     args = parser.parse_args()
     # policy
     data_config = DATA_CONFIG_MAP[args.data_config]
@@ -263,7 +263,9 @@ if __name__ == "__main__":
         test=True,
         debug=args.debug,
     )
-    
+    for i in np.array(cascaded_dataset.lengths) + 2:
+        sample = cascaded_dataset[i]
+    breakpoint()
     if 'vis' in args.mode:  # conduct testing for visualization
         conduct_visualization(cascaded_dataset, policy)
     else:  # conduct testing for reporting metrics

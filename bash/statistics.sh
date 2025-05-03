@@ -29,10 +29,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# echo "dataset_path: $dataset_path, depthanything_path: $depthanything_path, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, incorporate_depth: $incorporate_depth
 
 CUDA_VISIBLE_DEVICES=$device python -m pdb -m scripts.statistics \
   --dataset_path "$dataset_path" \
   --dataset_list "$dataset_list" \
-  # Uncomment the following line if you want to pass the dataset_list as a list
-  # ${dataset_list[@]:+--dataset_list ${dataset_list[@]}}

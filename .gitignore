@@ -22,3 +22,4 @@ utils/transform.py
 manopth/
 gr00t/model/backbone/depth_anything_v2/checkpoints
 unaligned_task_list.txt
+vis_depth/

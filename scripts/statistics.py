@@ -31,7 +31,6 @@ class Config:
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: str = ""
     exp_name: str = "runs"
-    incorporate_depth: int = 0
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -124,6 +123,7 @@ def main(config: Config):
         dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), data_storage_kwargs, split=dict(train=1.0))
         statistics_dataset_list.append(dataset)
     cascaded_dataset = CascadedDataset(statistics_dataset_list)
+    breakpoint()
     statistics = cascaded_dataset.calculate_running_statistics(batch_size=8192, num_workers=8)
     metadata_json = f'model_config/metadata/{config.dataset_list.lower()}_relative.json'
     if not os.path.exists(metadata_json):
