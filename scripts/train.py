@@ -60,8 +60,11 @@ class Config:
     num_gpus: int = 8
     """Number of GPUs to use for training."""
 
-    save_steps: int = 4000
+    save_steps: int = 5000
     """Number of steps between saving checkpoints."""
+
+    eval_steps: int = 2500
+    """Number of steps between evaluation."""
 
     # Model parameters
     model_cfg_path: str = "model_config"
@@ -123,7 +126,6 @@ class Config:
 def main(config: Config):
     # custom config editing
     config.output_dir = os.path.join(config.output_dir, config.exp_name)
-    config.eval_steps = config.save_steps // 4
         
     # ------------ step 1: load dataset ------------
     data_config = DATA_CONFIG_MAP[config.data_config]
@@ -197,7 +199,7 @@ def main(config: Config):
         torch_compile_mode=None,
         # eval
         do_eval=True,
-        evaluation_strategy="steps",   # epoch
+        evaluation_strategy="epoch",   # steps
         eval_steps=config.eval_steps,  # when evaluation_strategy is "steps"
         per_device_eval_batch_size=config.batch_size,
         label_names=["action"],

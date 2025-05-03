@@ -80,7 +80,7 @@ def cal_metrics(pred, true):
     
     return metrics 
 
-def conduct_testing(cascaded_dataset, policy, batch_size=8192):
+def conduct_testing(cascaded_dataset, policy, batch_size):
     avg_metrics = {
         'action.theta': [],
         'action.rot': [],
@@ -119,7 +119,6 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
     for dataset_idx in range(len(cascaded_dataset.dataset_list)):
          dataset = cascaded_dataset.dataset_list[dataset_idx]
          all_trajectory_index[str(dataset)] = np.array(dataset.data_storage.valid_trajectory_range) + cascaded_dataset.cumsum_length_list[dataset_idx]
-    breakpoint()
     # Visualize K trajectories for each dataset 
     for dataset_name, trajectory_range in all_trajectory_index.items():
         vis_trajectory_range = trajectory_range[np.random.choice(len(trajectory_range), per_vis, replace=False)] if len(trajectory_range) > per_vis and per_vis!= -1 else trajectory_range
@@ -128,11 +127,27 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             T = e - b
             ## inference
             step_data = default_collate_fn([cascaded_dataset[_] for _ in range(b,e)])
+            '''
+            # debug single step inference
+            pred_action_single = {
+                'action.theta':[],
+                'action.rot':[],
+                'action.trans':[]
+            }
+            for timestep in range(T):
+                step_data_t = {k: v[timestep:timestep+1] for k, v in step_data.items()}
+                pred_action_t = policy.get_action(step_data_t)
+                for k in pred_action_single:
+                    pred_action_single[k].append(pred_action_t[k])
+            pred_action = {k: np.concatenate(v, 0) for k, v in pred_action_single.items()}
+            '''
             pred_action = policy.get_action(step_data)
-            ## calculate trajectory loss
+            '''
+            ## calculate trajectory loss: TODO
             gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
             batch_avg_metrics = cal_metrics(pred_action, gt_action)
             print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
+            '''
             ## visualize
             pred_mano = decode_pred(pred_action)
             '''
@@ -196,7 +211,7 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 weights = torch.exp(-1.5 * torch.arange(chunk_size, dtype=torch.float32, device=pred_mano_trans_chunk_t.device))
                 weights = weights / weights.sum() 
                 '''
-                weights = torch.ones(chunk_size, device=pred_mano_trans_chunk_t.device) / chunk_size
+                weights = torch.ones(chunk_size, device=pred_mano_trans_chunk_t.device) / chunk_size  # average
                 U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_rot9d_chunk_t * weights.view(-1,1,1), dim=0))
                 pred_mano_rot9d_smooth.append(U @ Vh)  # (3, 3)
                 U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_theta_chunk_t * weights.view(-1,1,1,1), dim=0))
@@ -213,6 +228,7 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
             # visualize
             offline_render(**vis_data)
+            breakpoint()
 
 
 if __name__ == "__main__":

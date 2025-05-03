@@ -4,10 +4,10 @@ pretrain_ckpt=""
 dataset_path="/mnt/vepfs/zbh/MHMP/datasets/"
 dataset_list=""  # Initialize as empty array, separate by comma
 split_portion=1.0
-batch_size=8192
+batch_size=16
 debug=0
 device="0"
-
+mode="vis"  #"test"
 
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -42,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       batch_size="$2"
       shift 2
       ;;
+    -mode)
+      mode="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $key"
       exit 1
@@ -49,9 +53,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "dataset_path: $dataset_path, dataset_list: $dataset_list, split_portion: $split_portion, batch_size: $batch_size, debug: $debug, device: $device"
+echo "mode: $mode, dataset_path: $dataset_path, dataset_list: $dataset_list, split_portion: $split_portion, batch_size: $batch_size, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt"
 
-CUDA_VISIBLE_DEVICES=$device python -m pdb -m scripts.test \
+CUDA_VISIBLE_DEVICES=$device python -m scripts.test \
+  --mode $mode \
   --dataset_path $dataset_path \
   --dataset_list $dataset_list \
   --split_portion $split_portion \

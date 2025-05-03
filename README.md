@@ -89,7 +89,7 @@ test_dataset = load_cascaded_dataset(
 
 # MHMP
 # on server:
-bash bash/train.sh -batch_size 104 -depthanything_path "" -incorporate_depth 0 -exp_name RGB_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 108 -depthanything_path "" -incorporate_depth 0 -exp_name RGB_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
 # locally:
 bash bash/train.sh -dataset_path /media/ps/zhan/DATASET/ -depthanything_path "" -incorporate_depth 0 -exp_name ZY_RGB_fpha -lora_rank 0 -tune_llm 0 -tune_visual 0 -device 0 -dataset_list fpha -debug 1 -batch_size 1 
 # test and visualize
