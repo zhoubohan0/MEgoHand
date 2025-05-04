@@ -3,7 +3,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.jit as jit
-
+import cv2
+import matplotlib
 
 class RunningMeanStdMinMax(jit.ScriptModule):
     def __init__(self, shape=(), device='cuda'):
@@ -43,8 +44,6 @@ class RunningMeanStdMinMax(jit.ScriptModule):
             'q99':self.min + (self.max - self.min) * 0.99,
         }
 
-def clip_depth(x, max_depth=2.0):  # m
-    return x.clip(0, max_depth)
 
 def resize(x, size=(256,256)):
     '''
@@ -106,8 +105,48 @@ def l1(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     """
     return F.l1_loss(x1, x2, reduction='mean')
 
+def smooth_l1(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+    """
+    Smooth L1 Loss
+    """
+    return F.smooth_l1_loss(x1, x2, reduction='mean')  
+
+# depth related
+def clip_depth(x, max_depth=2.0):  # m
+    return x.clip(0, max_depth)
+
 def minmaxscale(x: torch.Tensor) -> torch.Tensor:
     """
     MinMax Scale
     """
     return (x - x.min()) / (x.max() - x.min())
+
+# depth visualization
+cmap = matplotlib.colormaps.get_cmap('Spectral_r')
+def depth2color(depth: np.ndarray) -> np.ndarray:
+    depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
+    depth = depth.astype(np.uint8)
+    depth = (cmap(depth)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
+    return depth
+
+def concat4vis(depth: np.ndarray, depth_gt: np.ndarray, raw_image: np.ndarray=None, tag='Pred') -> np.ndarray:
+    """
+    Concatenate depth, depth_gt, and raw_image for visualization.
+    depth: \in [0,2]
+    depth_gt: \in [0,2]
+    raw_image: \in [0,255]
+    """
+    depth = depth2color(depth)
+    depth_gt = depth2color(depth_gt)
+
+    H, W = depth.shape[:2]
+    split_region = np.ones((H, 50, 3), dtype=np.uint8) * 255
+    scale = max(H, W) / 500  # Auto-scale factor
+    depth = cv2.putText(depth, tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
+    depth_gt = cv2.putText(depth_gt, 'GT', (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
+    combined_result = cv2.hconcat([depth, split_region, depth_gt])
+    if raw_image is not None:
+        raw_image = cv2.putText(raw_image, 'RGB', (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
+        combined_result = cv2.hconcat([raw_image, split_region, combined_result])
+
+    return combined_result

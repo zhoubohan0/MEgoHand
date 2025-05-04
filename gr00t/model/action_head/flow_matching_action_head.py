@@ -393,7 +393,11 @@ class FlowmatchingActionHead(nn.Module):
             # Update actions using euler integration.
             actions = actions + dt * pred_velocity
         # return BatchFeature(data={"action_pred": actions})
-        return {"action_pred": actions}
+        rtn = {"action_pred": actions}
+        # customize mid-process return
+        mid_keys = ['depth_pred']
+        rtn.update({k: backbone_output[k] for k in mid_keys if k in backbone_output})
+        return rtn
 
     @property
     def device(self):

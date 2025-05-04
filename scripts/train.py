@@ -53,7 +53,7 @@ class Config:
     batch_size: int = 128
     """Batch size per GPU for training."""
 
-    max_steps: int = 100000
+    max_steps: int = 50000
     """Maximum number of training steps."""
 
     num_gpus: int = 8
@@ -85,7 +85,7 @@ class Config:
     """Whether to resume from a checkpoint."""
 
     # Advanced training parameters
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     """Learning rate for training."""
 
     weight_decay: float = 1e-5

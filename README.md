@@ -89,14 +89,14 @@ test_dataset = load_cascaded_dataset(
 
 # MHMP
 # on server:
-bash bash/train.sh -batch_size 108 -depthanything_path "" -exp_name RGB_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 108 -depthanything_path "" -exp_name RGB_l1_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
 # locally:
 bash bash/train.sh -dataset_path /media/ps/zhan/DATASET/ -depthanything_path "" -exp_name ZY_RGB_fpha -lora_rank 0 -tune_llm 0 -tune_visual 0 -device 0 -dataset_list fpha -debug 1 -batch_size 1 
 # test and visualize
-bash bash/test.sh -dataset_list taco -split_portion 0.95 -pretrain_ckpt /mnt/vepfs/zbh/MHMP/logs/RGB_notunellm/checkpoint-10000
+bash bash/test.sh -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2 -split_portion 0.95 -pretrain_ckpt /mnt/vepfs/zbh/MHMP/logs/RGBD_l1_7_realD/checkpoint-30000
 
 # MHMP+
-bash bash/train.sh -batch_size 75 -depthanything_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -exp_name RGBD_notunellm_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 80 -depthanything_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -exp_name RGBD_l1_7_genD -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
 ```
 Visualize logs:
 ```bash

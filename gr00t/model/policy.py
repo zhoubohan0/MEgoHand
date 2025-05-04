@@ -127,7 +127,7 @@ class MHMPolicy(BasePolicy):
         """
         return self._modality_transform.unapply(action)
 
-    def get_action(self, observations: Dict[str, Any]) -> Dict[str, Any]:
+    def get_action(self, observations: Dict[str, Any], return_mid_info=False) -> Dict[str, Any]:
         """
         Make a prediction with the model.
         Args:
@@ -205,18 +205,21 @@ class MHMPolicy(BasePolicy):
         '''
         # add 'state_mask', image-text 'input_ids' and all one 'attention_mask'
         normalized_input = self.apply_transforms(observations)
-        normalized_action = self._get_action_from_normalized_input({k: v.cuda() for k, v in normalized_input.items()})
+        normalized_action, mid_info = self._get_action_from_normalized_input({k: v.cuda() for k, v in normalized_input.items()})
         unnormalized_action = self._get_unnormalized_action(normalized_action)
         if not is_batch:
             unnormalized_action = squeeze_dict_values(unnormalized_action)
-        return unnormalized_action
+        if not return_mid_info:
+            return unnormalized_action
+        return unnormalized_action, mid_info
 
     def _get_action_from_normalized_input(self, normalized_input: Dict[str, Any]) -> torch.Tensor:
         with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             model_pred = self.model.get_action(normalized_input)
 
         normalized_action = model_pred["action_pred"].float()  # (B, T, Da)
-        return normalized_action
+        mid_info = {k: v for k, v in model_pred.items() if k != "action_pred"}
+        return normalized_action, mid_info
 
     def _get_unnormalized_action(self, normalized_action: torch.Tensor) -> Dict[str, Any]:
         return self.unapply_transforms({"action": normalized_action.cpu()})

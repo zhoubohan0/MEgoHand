@@ -16,13 +16,14 @@
 import argparse
 import warnings
 import numpy as np
+import cv2
 import torch
 from einops import repeat
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
-from gr00t.utils.util import default_collate_fn, mse, glance_dict
+from gr00t.utils.util import default_collate_fn, mse, glance_dict, concat4vis, resize
 from mhmp_vis.dataset_loader import *
 from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist, decode_absolute_pose_from_relative, batch_rot2aa, get_pose12d_from_camera_to_world, batch_rodrigues
 from mhmp_vis.utils.util import mano_forward
@@ -141,7 +142,16 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                     pred_action_single[k].append(pred_action_t[k])
             pred_action = {k: np.concatenate(v, 0) for k, v in pred_action_single.items()}
             '''
-            pred_action = policy.get_action(step_data)
+            # pred_action = policy.get_action(step_data)
+            ## visualize depth prediction
+            pred_action, mid_info = policy.get_action(step_data, True)
+            depth_pred = mid_info['depth_pred'].squeeze(1).cpu().numpy()
+            depth_gt = step_data['depth.ego_view'].squeeze().cpu().numpy()
+            rgb = np.stack([cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), (256, 256), interpolation=cv2.INTER_LINEAR) for img in step_data['video'].squeeze()])
+            out_dir = f'vis_depth/{dataset_name}_traj{i_traj:03d}_T{T:03d}'
+            os.makedirs(out_dir, exist_ok=True)
+            for t in range(T):
+                cv2.imwrite(os.path.join(out_dir, f'{t:03d}.png'), concat4vis(depth_pred[t], depth_gt[t], rgb[t]))
             '''
             ## calculate trajectory loss: TODO
             gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
@@ -227,6 +237,7 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             pred_hand_vertices = mano_forward(pred_mano_theta_smooth, pred_mano_beta_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth, side)[0]
             vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
             # visualize
+            # vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
             offline_render(**vis_data)
             breakpoint()
 
@@ -263,9 +274,11 @@ if __name__ == "__main__":
         test=True,
         debug=args.debug,
     )
+    '''
     for i in np.array(cascaded_dataset.lengths) + 2:
         sample = cascaded_dataset[i]
     breakpoint()
+    '''
     if 'vis' in args.mode:  # conduct testing for visualization
         conduct_visualization(cascaded_dataset, policy)
     else:  # conduct testing for reporting metrics

@@ -775,7 +775,7 @@ class HandMotionDataConfig(BaseDataConfig):
             VideoToTensor(apply_to=self.da_keys),
             VideoResize(apply_to=self.da_keys, height=518, width=518, interpolation="cubic"),
             VideoNormalize(apply_to=self.da_keys)
-        ] if split != 'test' else []
+        ]
         video_transforms = [
             VideoToTensor(apply_to=self.video_keys),
             VideoCrop(apply_to=self.video_keys, scale=0.95),

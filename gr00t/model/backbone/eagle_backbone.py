@@ -22,7 +22,7 @@ from transformers.feature_extraction_utils import BatchFeature
 import torchvision.models as models
 from einops import repeat, rearrange
 import gr00t
-from gr00t.utils.util import clip_depth, resize, l1, minmaxscale
+from gr00t.utils.util import clip_depth, resize, l1, smooth_l1, mse, minmaxscale
 from gr00t.model.transforms import EAGLE_KEYS
 from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificValues, reshape_model_embeddings
 from .depth_anything_v2.dpt import DepthAnythingV2
@@ -120,7 +120,7 @@ class EagleBackbone(nn.Module):
         self.reproject_vision = reproject_vision
         self.incorporate_depth = os.path.exists(depthanything_path)
         
-        local_rank = int(os.environ.get("LOCAL_RANK", 7))  # default to 7 if not set
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
         device = torch.device(f"cuda:{local_rank}")
         
         # cutomize: depth-anything model
@@ -222,7 +222,7 @@ class EagleBackbone(nn.Module):
         # Set frozen module to eval
         self.set_frozen_modules_to_eval_mode()
         if self.incorporate_depth:
-            depth_true = vl_input["depth.ego_view"].squeeze(1)    # (B, 1, H, W)
+            depth_true = vl_input['depth.ego_view'].squeeze(1)    # (B, 1, H, W)
             depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1)) # depth estimation
             depth_pred = resize(clip_depth(depth_pred))  # clip (TODO: reletive (x - x.min()) / (x.max() - x.min()))
             '''
@@ -235,12 +235,20 @@ class EagleBackbone(nn.Module):
             plt.savefig("depth_cmp.png")
             breakpoint()
             '''
-            # depth_mask: 0 indicates absent or bad depth inputs
-            depth_mask = (depth_true >= 0).any(dim=(1, 2, 3))
-            depth_feature = torch.empty(len(depth_mask), 64, 2048).to(depth_pred.device)       # (B, 64, 2048)
+
+            '''
+            # filter absent / bad depth inputs            
+            depth_mask = depth_true[...,0,0].view(-1) >= 0  # depth_mask: 0 indicates abnormal
+            depth_feature = torch.empty(len(depth_mask), 64, 2048).to(device=depth_pred.device, dtype=torch.bfloat16)  # (B, 64, 2048)
             depth_feature[depth_mask] = self.depth_encoder(depth_true[depth_mask])
             depth_feature[~depth_mask] = self.depth_encoder(depth_pred[~depth_mask])
             vlm_output["depth_loss"] = l1(depth_pred[depth_mask], depth_true[depth_mask])
+            '''
+            depth_feature = self.depth_encoder(depth_pred)
+            depth_feature_true = self.depth_encoder(depth_true)
+            # vlm_output["depth_pred"] = depth_pred  # for test visualization
+            vlm_output["depth_loss"] = l1(depth_pred, depth_true)
+            vlm_output["depth_feature_loss"] = mse(depth_feature, depth_feature_true)
         else:
             depth_feature = None
         embeddings = get_embeddings(
@@ -254,5 +262,5 @@ class EagleBackbone(nn.Module):
             "backbone_attention_mask": vl_input["attention_mask"],
         })
         
-        # return BatchFeature(data=vlm_output)  
+        # return BatchFeature(data=vlm_output) 
         return vlm_output

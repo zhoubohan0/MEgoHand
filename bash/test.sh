@@ -55,7 +55,7 @@ done
 
 echo "mode: $mode, dataset_path: $dataset_path, dataset_list: $dataset_list, split_portion: $split_portion, batch_size: $batch_size, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt"
 
-CUDA_VISIBLE_DEVICES=$device python -m scripts.test \
+CUDA_VISIBLE_DEVICES=$device python -m pdb -m scripts.test \
   --mode $mode \
   --dataset_path $dataset_path \
   --dataset_list $dataset_list \
