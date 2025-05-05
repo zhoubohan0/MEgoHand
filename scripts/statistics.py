@@ -28,6 +28,7 @@ from mhmp_vis.dataset_loader import *
 @dataclass
 class Config:
     # customize
+    multimodal: str = "tv"
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: str = ""
     exp_name: str = "runs"

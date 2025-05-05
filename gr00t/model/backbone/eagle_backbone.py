@@ -56,27 +56,35 @@ def get_embeddings(
     input_ids=None,
     attention_mask=None,
     visual_features=None,
+    multimodal='tv'
 ) -> torch.LongTensor:
     ## get visual embeddings from pixel, if provided then overwrite
     assert pixel_values is not None and self.img_context_token_id is not None
     pixel_values, input_ids, attention_mask = pixel_values.squeeze(1), input_ids.squeeze(1), attention_mask.squeeze(1)  # avoid additional batch dim
-    with autocast(dtype=torch.bfloat16):
-        vit_embeds = self.extract_feature(pixel_values)  # [B, 3, 224, 224] -> [B, 64, 2048]
-    # pooling visual feature and depth feature
-    visual_embeds = (depth_feature + vit_embeds) if depth_feature is not None else vit_embeds
-
-    ## get language embeddings, then overwrite some with visual embeddings
-    # 1. get input embeddings
-    input_embeds = self.language_model.get_input_embeddings()(input_ids)
-    B, N, C = input_embeds.shape
-    input_embeds = input_embeds.reshape(B * N, C)
-    # 2. get visual position
-    selected = input_ids.reshape(B * N) == self.img_context_token_id
-    assert selected.sum() != 0
-    # 3. overwrite visual embeddings
-    embeds_to_scatter = visual_embeds.reshape(-1, C).to(input_embeds.device, input_embeds.dtype)
-    input_embeds[selected] = embeds_to_scatter
-    input_embeds = input_embeds.reshape(B, N, C)
+    
+    if 'tv' in multimodal:
+        # 1. get language input embeddings
+        input_embeds = self.language_model.get_input_embeddings()(input_ids)
+        B, N, C = input_embeds.shape
+        input_embeds = input_embeds.reshape(B * N, C)
+        # 2. overwrite visual embeddings
+        with autocast(dtype=torch.bfloat16):
+            vit_embeds = self.extract_feature(pixel_values)  # [B, 3, 224, 224] -> [B, 64, 2048]
+        # pooling visual feature and depth feature
+        visual_embeds = (depth_feature + vit_embeds) if depth_feature is not None else vit_embeds  # [B, 64, 2048]
+        embeds_to_scatter = visual_embeds.reshape(-1, C).to(input_embeds.device, input_embeds.dtype)
+        selected = input_ids.reshape(B * N) == self.img_context_token_id
+        input_embeds[selected] = embeds_to_scatter
+        input_embeds = input_embeds.reshape(B, N, C)
+    elif 't' in multimodal:
+        input_embeds = self.language_model.get_input_embeddings()(input_ids)
+    elif 'v' in multimodal:
+        with autocast(dtype=torch.bfloat16):
+            vit_embeds = self.extract_feature(pixel_values)  # [B, 3, 224, 224] -> [B, 64, 2048]
+        input_embeds = (depth_feature + vit_embeds) if depth_feature is not None else vit_embeds  # [B, 64, 2048]
+        attention_mask = torch.ones(input_embeds.shape[0], input_embeds.shape[1], device=input_embeds.device, dtype=torch.int64)
+    else:
+        raise ValueError(f"Invalid multimodal mode: {multimodal}")
 
     ## vllm forward
     with autocast(dtype=torch.bfloat16):
@@ -86,7 +94,7 @@ def get_embeddings(
             output_hidden_states=True,
         ).hidden_states[-1]
 
-    if reproject_vision:  # only use the output of language and overwrite the input visual embeddings
+    if reproject_vision:  # use the original visual embeddings instead of VLM output embeddings
         embeddings = embeddings.reshape(B * N, C)
         embeddings[selected] = embeds_to_scatter
         embeddings = embeddings.reshape(B, N, C)
@@ -109,6 +117,7 @@ class EagleBackbone(nn.Module):
         use_local_eagle_hg_model: bool = True,
         # customize
         depthanything_path: str = "",  
+        multimodal: str = 'tv',
     ):
         super().__init__()
         # load local eagle model and set property
@@ -119,6 +128,7 @@ class EagleBackbone(nn.Module):
         self.model.neftune_alpha = None
         self.reproject_vision = reproject_vision
         self.incorporate_depth = os.path.exists(depthanything_path)
+        self.multimodal = multimodal
         
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
         device = torch.device(f"cuda:{local_rank}")
@@ -256,6 +266,7 @@ class EagleBackbone(nn.Module):
             self.reproject_vision,
             **{k:v for k,v in vl_input.items() if k in EAGLE_KEYS},
             depth_feature=depth_feature,
+            multimodal=self.multimodal,
         )
         vlm_output.update({
             "backbone_features": self.linear(embeddings),           # [B, T2, hidden_size]

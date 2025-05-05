@@ -33,6 +33,7 @@ from mhmp_vis.dataset_loader import load_cascaded_dataset
 @dataclass
 class Config:
     # customize
+    multimodal: str = "tv"
     depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: str = ""
     exp_name: str = "runs"
@@ -147,6 +148,7 @@ def main(config: Config):
     # customize
     model_config.update({
         "depthanything_path": config.depthanything_path,
+        "multimodal": config.multimodal,
     })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")
     model.backbone.set_trainable_parameters(tune_visual=config.tune_visual, tune_llm=config.tune_llm)

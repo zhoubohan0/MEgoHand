@@ -1,7 +1,7 @@
 #!/bin/bash
+
 dataset_list=""  # Initialize as empty array, separate by comma
 dataset_path="/mnt/vepfs/zbh/MHMP/datasets/"
-depthanything_path=""
 exp_name="runs"   
 device="0"
 
