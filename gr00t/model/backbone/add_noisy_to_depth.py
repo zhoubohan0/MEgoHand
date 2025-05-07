@@ -7,7 +7,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import os, sys, argparse
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-from gr00t.utils.util import clip_depth, concat4vis
+from gr00t.utils.util import clip_depth, visualize_RGBD
 
 def add_noise_to_depth(noisy_depth, noise_config):
     if 'gaussian_kernel' in noise_config:  # Gaussian smooth depth map
@@ -69,6 +69,4 @@ if __name__ == '__main__':
     noisy_depth = noisy_depth[0, 0].cpu().numpy()  # Corrected indexing
     print("noisy depth image:", noisy_depth.shape, noisy_depth.min(), noisy_depth.max())
 
-    out_dir = args.outdir
-    os.makedirs(out_dir, exist_ok=True)
-    cv2.imwrite(os.path.join(out_dir, 'noisy_depth.png'), concat4vis(noisy_depth, depth_png, tag='Noisy'))
+    visualize_RGBD(depth=noisy_depth, depth_gt=depth_png, tag='Noisy', save_file=os.path.join(args.outdir, 'noisy_depth.png'))

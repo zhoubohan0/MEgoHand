@@ -3,8 +3,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.jit as jit
-import cv2
-import matplotlib
+import os, cv2
+import matplotlib.pyplot as plt
 
 class RunningMeanStdMinMax(jit.ScriptModule):
     def __init__(self, shape=(), device='cuda'):
@@ -122,31 +122,84 @@ def minmaxscale(x: torch.Tensor) -> torch.Tensor:
     return (x - x.min()) / (x.max() - x.min())
 
 # depth visualization
-cmap = matplotlib.colormaps.get_cmap('Spectral_r')
-def depth2color(depth: np.ndarray) -> np.ndarray:
+def depth2color(depth: np.ndarray, cmap='Spectral_r') -> np.ndarray:
     depth = (depth - depth.min()) / (depth.max() - depth.min()) * 255.0
     depth = depth.astype(np.uint8)
+    cmap = plt.get_cmap(cmap)
     depth = (cmap(depth)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
     return depth
 
-def concat4vis(depth: np.ndarray, depth_gt: np.ndarray, raw_image: np.ndarray=None, tag='Pred') -> np.ndarray:
-    """
-    Concatenate depth, depth_gt, and raw_image for visualization.
-    depth: \in [0,2]
-    depth_gt: \in [0,2]
-    raw_image: \in [0,255]
-    """
-    depth = depth2color(depth)
-    depth_gt = depth2color(depth_gt)
 
-    H, W = depth.shape[:2]
-    split_region = np.ones((H, 50, 3), dtype=np.uint8) * 255
-    scale = max(H, W) / 500  # Auto-scale factor
-    depth = cv2.putText(depth, tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
-    depth_gt = cv2.putText(depth_gt, 'GT', (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
-    combined_result = cv2.hconcat([depth, split_region, depth_gt])
-    if raw_image is not None:
-        raw_image = cv2.putText(raw_image, 'RGB', (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
-        combined_result = cv2.hconcat([raw_image, split_region, combined_result])
 
-    return combined_result
+def visualize_RGBD(
+        depth: np.ndarray, depth_gt: np.ndarray, rgb: np.ndarray=None, 
+        save_file='', tag='Pred', 
+        way='matplotlib',  # 'cv2', 'matplotlib', 'plotly' 
+        cmap='Spectral_r'  # 'magma', 'magma_r',
+    ):
+    """
+    Concatenate depth, depth_gt, and rgb for visualization.
+    depth: metric depth, \in [0,2]
+    depth_gt: metric depth, \in [0,2]
+    rgb: \in [0,255]
+    """
+    RGB_tag = 'RGB'
+    depth_gt_tag = 'GT'
+    if save_file:
+        os.makedirs(os.path.dirname(save_file), exist_ok=True)
+
+    if way == 'cv2':
+        depth = depth2color(depth, cmap)
+        depth_gt = depth2color(depth_gt, cmap)
+
+        H, W = depth.shape[:2]
+        split_region = np.ones((H, 50, 3), dtype=np.uint8) * 255
+        scale = max(H, W) / 500  # Auto-scale factor
+        depth = cv2.putText(depth, tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
+        depth_gt = cv2.putText(depth_gt, depth_gt_tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
+        combined_result = cv2.hconcat([depth, split_region, depth_gt])
+        if rgb is not None:
+            rgb = cv2.putText(rgb, RGB_tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
+            combined_result = cv2.hconcat([rgb, split_region, combined_result])
+        cv2.imwrite(save_file, combined_result)
+
+    elif way == 'matplotlib':
+        grid_size = 10
+        num_plot = 2 if rgb is None else 3
+        fig, ax = plt.subplots(1, num_plot, figsize=(grid_size * num_plot, grid_size))
+        ax[0].imshow(rgb)
+        ax[0].set_title(RGB_tag)
+        ax[0].axis('off')
+        ax[1].imshow(depth, cmap=cmap)
+        ax[1].set_title(tag)
+        ax[1].axis('off')
+        plt.colorbar(ax[1].imshow(depth, cmap=cmap), ax=ax[1], shrink=0.5)
+        if rgb is not None:
+            ax[2].imshow(depth_gt, cmap=cmap)
+            ax[2].set_title(depth_gt_tag)
+            ax[2].axis('off')
+            plt.colorbar(ax[2].imshow(depth_gt, cmap=cmap), ax=ax[2], shrink=0.5)
+        plt.savefig(save_file, bbox_inches='tight')
+        plt.close()
+
+    elif way == 'plotly':  # online, 3D
+        import plotly.graph_objects as go
+        fig = go.Figure(
+            data=go.Surface(
+                z=depth,  # Depth values as the height
+                colorscale='Viridis',  # Choose a color scale like 'Viridis', 'Cividis', 'Jet', etc.
+                colorbar=dict(title="Depth"),  # Add a colorbar with a label
+            )
+        )
+        fig.update_layout(
+            title=tag,
+            scene=dict(
+                xaxis_title="X-axis (pixels)",
+                yaxis_title="Y-axis (pixels)",
+                zaxis_title="Depth",
+            ),
+            margin=dict(l=0, r=0, t=50, b=0),  # Reduce margins for better fit
+        )
+        fig.show()
+    else:
+        raise NotImplementedError(f"Visualization method {way} is not implemented.")

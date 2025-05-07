@@ -23,7 +23,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
-from gr00t.utils.util import default_collate_fn, mse, glance_dict, concat4vis, resize
+from gr00t.utils.util import default_collate_fn, mse, glance_dict, visualize_RGBD, resize
 from mhmp_vis.dataset_loader import *
 from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist, decode_absolute_pose_from_relative, batch_rot2aa, get_pose12d_from_camera_to_world, batch_rodrigues
 from mhmp_vis.utils.util import mano_forward
@@ -149,9 +149,8 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             depth_gt = step_data['depth.ego_view'].squeeze().cpu().numpy()
             rgb = np.stack([cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), (256, 256), interpolation=cv2.INTER_LINEAR) for img in step_data['video'].squeeze()])
             out_dir = f'vis_depth/{dataset_name}_traj{i_traj:03d}_T{T:03d}'
-            os.makedirs(out_dir, exist_ok=True)
             for t in range(T):
-                cv2.imwrite(os.path.join(out_dir, f'{t:03d}.png'), concat4vis(depth_pred[t], depth_gt[t], rgb[t]))
+                visualize_RGBD(depth=depth_pred[t], depth_gt=depth_gt[t], rgb=rgb[t], save_file=os.path.join(out_dir, f'{t:03d}.png'))
             '''
             ## calculate trajectory loss: TODO
             gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
