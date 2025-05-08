@@ -288,7 +288,7 @@ class GR00TTransform(InvertibleModalityTransform):
             ), f"Shape mismatch: {[(key, transformed_data[key].shape) for key in action_and_mask_keys]}"
 
         # custom keys
-        keep_custom_keys = ['depth.ego_view', 'video.depthanything']
+        keep_custom_keys = ['depth.ego_view', 'video.depthmodel']
         for key in keep_custom_keys:
             transformed_data[key] = data[key]
         return transformed_data

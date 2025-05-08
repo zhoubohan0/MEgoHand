@@ -18,7 +18,7 @@ breakpoint()
 train_dataset, eval_dataset = load_cascaded_dataset(
     dataset_path='/media/ps/zhan/DATASET/',
     dataset_list='fpha'.split(','),
-    split_portion=0.95,
+    split_portion=0.99,
     data_config=data_config,
     data_storage_kwargs=data_storage_kwargs,
     test=False,

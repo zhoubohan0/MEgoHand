@@ -34,11 +34,11 @@ from mhmp_vis.dataset_loader import load_cascaded_dataset
 class Config:
     # customize
     multimodal: str = "tv"
-    depthanything_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
+    depth_model_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
     dataset_list: str = ""
     exp_name: str = "runs"
     debug: int = 0
-    split_portion: float = 0.95
+    split_portion: float = 0.99
 
     # Dataset parameters
     dataset_path: str = '/mnt/vepfs/zbh/MHMP/datasets/'
@@ -147,7 +147,7 @@ def main(config: Config):
         model_config = json.load(f)
     # customize
     model_config.update({
-        "depthanything_path": config.depthanything_path,
+        "depth_model_path": config.depth_model_path,
         "multimodal": config.multimodal,
     })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")

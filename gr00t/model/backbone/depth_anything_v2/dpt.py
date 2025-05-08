@@ -170,17 +170,21 @@ class DepthAnythingV2(nn.Module):
         
         self.encoder = encoder
         self.pretrained = DINOv2(model_name=encoder)
-        # freeze DINOv2
-        for param in self.pretrained.parameters():
-            param.requires_grad = False
+        # customize: freeze DINOv2
+        # for param in self.pretrained.parameters():
+        #     param.requires_grad = False
         self.depth_head = DPTHead(self.pretrained.embed_dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken)
+        self.name = "depthanythingv2"
     
     def forward(self, x):
         features = self.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx[self.encoder], return_class_token=True)
         patch_h, patch_w = x.shape[-2] // 14, x.shape[-1] // 14
         depth = self.depth_head(features, patch_h, patch_w)
         
-        return depth.squeeze(1)
+        return depth
+    
+    def forward_depth_model(self, nomalized_rgb_batch):
+        return self.forward(nomalized_rgb_batch).squeeze(1)
     
     @torch.no_grad()
     def infer_image(self, raw_image, input_size=518):

@@ -7,7 +7,7 @@ from .utils import FNS, masked_mean
 class Confidence(nn.Module):
     def __init__(
         self,
-        weight: float,
+        weight: float = 1.0,
         output_fn: str = "sqrt",
         input_fn: str = "linear",
         rescale: bool = True,
@@ -50,7 +50,7 @@ class Confidence(nn.Module):
         losses = masked_mean(error, dim=[-1], mask=mask).squeeze(dim=-1)
         losses = self.output_fn(losses)
 
-        return losses
+        return losses.mean()
 
     @classmethod
     def build(cls, config):

@@ -126,7 +126,7 @@ class GR00T_N1(PreTrainedModel):
         super().__init__(config)
         self.local_model_path = local_model_path
         # customize
-        config.backbone_cfg['depthanything_path'] = config.depthanything_path
+        config.backbone_cfg['depth_model_path'] = config.depth_model_path
         config.backbone_cfg['multimodal'] = config.multimodal
         self.backbone = EagleBackbone(**config.backbone_cfg)
         self.action_head = FlowmatchingActionHead(FlowmatchingActionHeadConfig(**config.action_head_cfg))
@@ -225,7 +225,7 @@ class GR00T_N1(PreTrainedModel):
         - pixel_values torch.bfloat16
         - input_ids torch.int64
         - attention_mask torch.int64
-        - (video.depthanything torch.float32)
+        - (video.depthmodel torch.float32)
 
         action_inputs:
         - state torch.float32
@@ -243,7 +243,7 @@ class GR00T_N1(PreTrainedModel):
         - pixel_values torch.bfloat16
         - input_ids torch.int64
         - attention_mask torch.int64
-        - (video.depthanything torch.float32)
+        - (video.depthmodel torch.float32)
         backbone_outputs:
         - backbone_outputs['backbone_features']: [1, 99, 1536]
         - backbone_outputs['backbone_attention_mask']: [1, 99]

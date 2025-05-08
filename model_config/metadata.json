@@ -10849,7 +10849,7 @@
                 "channels": 3,
                 "fps": 20.0
             },
-            "depthanything": {
+            "depthmodel": {
                 "resolution": [
                     256,
                     256

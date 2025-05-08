@@ -692,31 +692,6 @@ class Gr1ArmsWaistDataConfig(Gr1ArmsOnlyDataConfig):
 
 ###########################################################################################
 
-'''
-class DepthAnythingTransform(ModalityTransform):
-    input_size: float = Field(..., description="defalut 518 / 14 == 37")
-    transform = Compose([
-        Resize(
-            width=input_size,
-            height=input_size,
-            resize_target=False,
-            keep_aspect_ratio=True,
-            ensure_multiple_of=14,
-            resize_method='lower_bound',
-            image_interpolation_method=cv2.INTER_CUBIC,
-        ),
-        NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        PrepareForNet(),
-    ])
-
-    def apply(self, data: dict[str, Any]) -> dict[str, Any]:
-        data['image'] = data['video.ego_view']
-        data = self.transform(data)
-        data['video.depthanything'] = torch.from_numpy(data['image']).unsqueeze(0).cuda()
-        del data['image']
-        return data
-'''
-
 class HandMotionDataConfig(BaseDataConfig):
     # customize
     is_render_depth = False
@@ -724,7 +699,7 @@ class HandMotionDataConfig(BaseDataConfig):
     action_horizon = 16
 
     video_keys = ["video.ego_view"]
-    da_keys = ["video.depthanything"]
+    da_keys = ["video.depthmodel"]
     state_keys = [  # 109
         "state.theta",  # 15 * 6
         "state.beta",   # 10
@@ -771,7 +746,7 @@ class HandMotionDataConfig(BaseDataConfig):
         return modality_configs
 
     def transform(self, split) -> ModalityTransform:
-        depthanything_transform = [
+        depthmodel_transform = [
             VideoToTensor(apply_to=self.da_keys),
             VideoResize(apply_to=self.da_keys, height=518, width=518, interpolation="cubic"),
             VideoNormalize(apply_to=self.da_keys)
@@ -814,7 +789,7 @@ class HandMotionDataConfig(BaseDataConfig):
                 max_action_dim=99,
             ),
         ]
-        return ComposedModalityTransform(transforms=depthanything_transform + video_transforms + vector_transforms)
+        return ComposedModalityTransform(transforms=depthmodel_transform + video_transforms + vector_transforms)
 
 
 DATA_CONFIG_MAP = {

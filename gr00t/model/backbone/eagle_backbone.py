@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+import os, json
 import torch
 from torch import nn
 from torch.cuda.amp import autocast
@@ -26,7 +26,29 @@ from gr00t.utils.util import clip_depth, resize, l1, smooth_l1, mse, minmaxscale
 from gr00t.model.transforms import EAGLE_KEYS
 from .eagle2_hg_model.inference_eagle_repo import EagleProcessor, ModelSpecificValues, reshape_model_embeddings
 from .depth_anything_v2.dpt import DepthAnythingV2
+from .unidepth.models import UniDepthV2
+from .unidepth.ops.losses import SILog, EdgeGuidedLocalSSI, Confidence
+
 DEFAULT_EAGLE_MODEL_NAME = os.path.join(os.path.dirname(gr00t.__file__), "model", "backbone", "eagle2_hg_model")
+
+
+class UnidepthLoss(nn.Module):
+    def __init__(self, device='cuda'):
+        super().__init__()
+        self.silog_loss = SILog()
+        # self.edge_loss = EdgeGuidedLocalSSI()
+        self.conf_loss = Confidence()
+
+    def forward(self, depth, depth_gt, **kwargs):
+        l1_loss = l1(depth, depth_gt)
+        depth_mask = torch.ones_like(depth, dtype=torch.bool)   
+        silog_loss = self.silog_loss(depth, target=depth_gt, mask=depth_mask)
+        # edge_loss = self.edge_loss(depth, target=depth_gt,mask=depth_mask)
+        if "confidence" in kwargs:
+            conf_loss = self.conf_loss(kwargs["confidence"], target_pred=depth, target_gt=depth_gt,mask=depth_mask)
+        else:
+            conf_loss = 0
+        return l1_loss + silog_loss + conf_loss * 0.1  # + edge_loss
 
 class DepthEncoder(nn.Module):
     def __init__(self, device='cuda'):
@@ -102,7 +124,7 @@ def get_embeddings(
 
 
 class EagleBackbone(nn.Module):
-    valid_input_keys = EAGLE_KEYS + ["video.depthanything"]
+    valid_input_keys = EAGLE_KEYS + ["video.depthmodel"]
     def __init__(
         self,
         select_layer: int = 12,
@@ -116,7 +138,7 @@ class EagleBackbone(nn.Module):
         allow_reshape_visual: bool = True,
         use_local_eagle_hg_model: bool = True,
         # customize
-        depthanything_path: str = "",  
+        depth_model_path: str = "",  
         multimodal: str = 'tv',
     ):
         super().__init__()
@@ -127,26 +149,50 @@ class EagleBackbone(nn.Module):
         self.model = AutoModel.from_config(config, trust_remote_code=True)
         self.model.neftune_alpha = None
         self.reproject_vision = reproject_vision
-        self.incorporate_depth = os.path.exists(depthanything_path)
+        self.incorporate_depth = os.path.exists(depth_model_path)
         self.multimodal = multimodal
+
+        # self.unidepth_loss = UnidepthLoss()
+        self.emb_loss = mse
         
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
         device = torch.device(f"cuda:{local_rank}")
         
         # cutomize: depth-anything model
         if self.incorporate_depth:
-            depth_anything_model_configs = {
-                'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
-                'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-                'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-                'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
-            }
-            depth_anything_encoder_type = 'vits'
-            self.depth_anything_model = DepthAnythingV2(**depth_anything_model_configs[depth_anything_encoder_type])
-            self.depth_anything_model.load_state_dict(torch.load(os.path.join(depthanything_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth'), map_location='cpu'))
-            self.depth_anything_model.to(device)
+            if "depth_anything" in depth_model_path:
+                depth_anything_model_configs = {
+                    'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+                    'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
+                    'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
+                    'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
+                }
+                depth_anything_encoder_type = 'vitl'
+                self.depth_model = DepthAnythingV2(**depth_anything_model_configs[depth_anything_encoder_type])
+                ckpt_path = os.path.join(depth_model_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth')
+            elif "unidepth" in depth_model_path:
+                version = 'v2'
+                backbone = 'vits14'
+                name = f"unidepth-{version}-{backbone}"
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                with open(os.path.join(current_dir, "unidepth/configs", f"config_{version}_{backbone}.json")) as f:
+                    config = json.load(f)
+                self.depth_model = UniDepthV2(config)
+                ckpt_path = os.path.join(depth_model_path, f'models--lpiccinelli--{name}/pytorch_model.bin')
+            else:
+                raise ValueError(f"Invalid depth model path: {depth_model_path}")
+            # load pretrained checkpoint
+            info = self.depth_model.load_state_dict(torch.load(ckpt_path, map_location='cpu'), strict=False)
+            print(f"\t missing keys: {info.missing_keys}")
+            print(f"\t additional keys: {info.unexpected_keys}")
+            self.depth_model.to(device)
+            # customize: freeze depth_model
+            # for module in self.depth_model.modules():
+            #     module.eval()
+            # for param in self.depth_model.parameters():
+            #     param.requires_grad = False
         else:
-            self.depth_anything_model = None
+            self.depth_model = None
 
         # cutomize: depth encoder
         self.depth_encoder = DepthEncoder(device=device).to(device)
@@ -232,8 +278,8 @@ class EagleBackbone(nn.Module):
         # Set frozen module to eval
         self.set_frozen_modules_to_eval_mode()
         if self.incorporate_depth:
-            depth_true = vl_input['depth.ego_view'].squeeze(1)    # (B, 1, H, W)
-            depth_pred = self.depth_anything_model(vl_input["video.depthanything"].squeeze(1)) # depth estimation
+            depth_true = vl_input['depth.ego_view'].squeeze(1).detach()    # (B, 1, H, W)
+            depth_pred = self.depth_model.forward_depth_model(vl_input["video.depthmodel"].squeeze(1)).detach() # depth estimation
             depth_pred = resize(clip_depth(depth_pred))  # clip (TODO: reletive (x - x.min()) / (x.max() - x.min()))
             '''
             # visualization
@@ -257,8 +303,8 @@ class EagleBackbone(nn.Module):
             depth_feature = self.depth_encoder(depth_pred)
             depth_feature_true = self.depth_encoder(depth_true)
             # vlm_output["depth_pred"] = depth_pred  # for test visualization
-            vlm_output["depth_loss"] = l1(depth_pred, depth_true)
-            vlm_output["depth_feature_loss"] = mse(depth_feature, depth_feature_true)
+            # vlm_output["depth_loss"] = self.unidepth_loss(depth_pred, depth_true)
+            vlm_output["depth_feature_loss"] = self.emb_loss(depth_feature, depth_feature_true)  # mse
         else:
             depth_feature = None
         embeddings = get_embeddings(

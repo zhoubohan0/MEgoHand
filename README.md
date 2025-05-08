@@ -58,7 +58,7 @@ data_storage_kwargs = dict(window_size=16, side='right', is_render_depth=False)
 train_dataset, eval_dataset = load_cascaded_dataset(
     dataset_path='/mnt/vepfs/zbh/MHMP/datasets/',
     dataset_list='arctic,fpha,h2o,hoi4d,hot3d,taco'.split(','),
-    split_portion=0.95,
+    split_portion=0.99,
     data_config=data_config,
     data_storage_kwargs=data_storage_kwargs,
     test=False,
@@ -85,19 +85,22 @@ test_dataset = load_cascaded_dataset(
 ## Training
 ```bash
 # MHMP-lora (unused)
-# bash bash/train.sh -dataset_list taco -depthanything_path "" -multimodal "tv" -exp_name RGB_lora -lora_rank 32 -tune_llm 1 -device "4,5,6,7"  # -resume "logs/RGB_lora/checkpoint-v0" -debug 1
+# bash bash/train.sh -dataset_list taco -depth_model_path "" -multimodal "tv" -exp_name TI_finetunelora -lora_rank 32 -tune_llm 1 -device "4,5,6,7"  # -resume "logs/RGB_lora/checkpoint-v0" -debug 1
 
 # MHMP
-bash bash/train.sh -batch_size 110 -depthanything_path "" -multimodal "tv" -exp_name RGB_l1_7 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 112 -depth_model_path "" -multimodal "tv" -exp_name TI_l1_6 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
-# MHMP+D
-bash bash/train.sh -batch_size 80 -depthanything_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "tv" -exp_name RGBD_l1_7_genD -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+# MHMP+DA
+bash bash/train.sh -batch_size 80 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "tv" -exp_name TID_l1_6_DA -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
+
+# MHMP+UD
+bash bash/train.sh -batch_size 64 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/unidepth/" -multimodal "tv" -exp_name TID_l1_6_UD -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
 # MHMP-T
-bash bash/train.sh -batch_size 256 -depthanything_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "t" -exp_name RGBD_l1_7_genD_T -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 256 -depth_model_path "" -multimodal "t" -exp_name T_l1_6 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
 # MHMP-V
-bash bash/train.sh -batch_size 90 -depthanything_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "v" -exp_name RGBD_l1_7_genD_V -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 90 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "v" -exp_name ID_l1_6_DA -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 ```
 
 Visualize logs as below. The checkpoint will be saved in $exp_dir/*

@@ -78,7 +78,7 @@ class DualBrainTrainer(transformers.Trainer):
         pixel_values: (B, 1, 3, 224, 224)
         input_ids: (B, 1, 120)
         depth.ego_view: (B, 1, 1, 256, 256)
-        video.depthanything: (B, 1, 3, 518, 518)
+        video.depthmodel: (B, 1, 3, 518, 518)
         '''
         outputs = model(inputs)
         loss = sum(outputs[k] for k in outputs if 'loss' in k)

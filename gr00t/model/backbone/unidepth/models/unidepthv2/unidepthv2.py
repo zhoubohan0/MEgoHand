@@ -15,6 +15,9 @@ import torchvision.transforms.v2.functional as TF
 from einops import rearrange
 from huggingface_hub import PyTorchModelHubMixin
 
+import os, sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+
 from unidepth.models.unidepthv2.decoder import Decoder
 from unidepth.utils.camera import BatchCamera, Camera, Pinhole
 from unidepth.utils.constants import (IMAGENET_DATASET_MEAN,
@@ -125,6 +128,7 @@ class UniDepthV2(
         self.eps = eps
         self.build(config)
         self.build_losses(config)
+        self.name = "unidepthv2"
 
     def forward_train(self, inputs, image_metas):
         inputs, outputs = self.encode_decode(inputs, image_metas)
@@ -164,6 +168,22 @@ class UniDepthV2(
             return self.forward_train(inputs, image_metas)
         else:
             return self.forward_test(inputs, image_metas)
+        
+    def forward_depth_model(self, nomalized_rgb_batch, image_metas={}):
+        inputs, outputs = self.encode_decode({'image': nomalized_rgb_batch}, image_metas)
+        '''
+        outputs:
+        {
+            "depth": [B, 1, H, W],
+            "points": [B, 3, H, W],
+            "rays": [B, 3, H, W],
+            "intrinsics": [B, 3, 3],
+            "depth_features": [B, 128, H, W],
+            "confidence": [B, 1, H, W],
+            "radius": [B, 1, H, W],
+        }
+        '''
+        return outputs["depth"].squeeze(1)
 
     def compute_losses(self, outputs, inputs, image_metas):
         B, _, H, W = inputs["image"].shape

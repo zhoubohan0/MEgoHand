@@ -57,7 +57,7 @@ def default_collate_fn(features: list[dict], **kwargs) -> dict:
     '''
     batch = {}
     keys = features[0].keys() if kwargs.get('keys', None) is None else kwargs['keys']
-    for key in keys:  # ['video.ego_view', 'depth.ego_view', 'state.theta', 'state.beta', 'state.rot', 'state.trans', 'action.theta', 'action.rot', 'action.trans', 'annotation.human.action.task_description', 'video.depthanything']
+    for key in keys:  # ['video.ego_view', 'depth.ego_view', 'state.theta', 'state.beta', 'state.rot', 'state.trans', 'action.theta', 'action.rot', 'action.trans', 'annotation.human.action.task_description', 'video.depthmodel']
         values = [elem[key] for elem in features]
         # stack according to the type
         if isinstance(values[0], torch.Tensor):

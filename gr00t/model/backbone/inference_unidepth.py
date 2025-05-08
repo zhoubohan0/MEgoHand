@@ -66,7 +66,7 @@ if __name__ == "__main__":
         config = json.load(f)
     model = UniDepthV2(config)
     ckpt_path = f'/mnt/vepfs/zbh/backup/pretrain/unidepth/models--lpiccinelli--{name}/pytorch_model.bin'
-    info = model.load_state_dict(torch.load(ckpt_path), strict=False)
+    info = model.load_state_dict(torch.load(ckpt_path), strict=True)
     print(f"{name} is loaded with:")
     print(f"\t missing keys: {info.missing_keys}")
     print(f"\t additional keys: {info.unexpected_keys}")
