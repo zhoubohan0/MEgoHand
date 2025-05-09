@@ -33,6 +33,124 @@ from mhmp_vis.dataset_visualizer.general_offline_visualizer import offline_rende
 
 warnings.simplefilter("ignore", category=FutureWarning)
 
+## metrics
+@torch.jit.script
+def procrustes_alignment(S1: torch.Tensor, S2: torch.Tensor) -> torch.Tensor:
+    """
+    Computes a similarity transform (sR, t) in a batched way that takes
+    a set of 3D points S1 (B, N, 3) closest to a set of 3D points S2 (B, N, 3),
+    where R is a 3x3 rotation matrix, t 3x1 translation, s scale.
+    i.e. solves the orthogonal Procrutes problem.
+    Args:
+        S1 (torch.Tensor): First set of points of shape (B, N, 3).
+        S2 (torch.Tensor): Second set of points of shape (B, N, 3).
+    Returns:
+        (torch.Tensor): The first set of points after applying the similarity transformation.
+    """
+
+    batch_size = S1.shape[0]
+    S1 = S1.permute(0, 2, 1)
+    S2 = S2.permute(0, 2, 1)
+    # 1. Remove mean.
+    mu1 = S1.mean(dim=2, keepdim=True)
+    mu2 = S2.mean(dim=2, keepdim=True)
+    X1 = S1 - mu1
+    X2 = S2 - mu2
+
+    # 2. Compute variance of X1 used for scale.
+    var1 = (X1**2).sum(dim=(1,2))
+
+    # 3. The outer product of X1 and X2.
+    K = torch.matmul(X1, X2.permute(0, 2, 1))
+
+    # 4. Solution that Maximizes trace(R'K) is R=U*V', where U, V are singular vectors of K.
+    U, s, V = torch.svd(K)
+    Vh = V.permute(0, 2, 1)
+
+    # Construct Z that fixes the orientation of R to get det(R)=1.
+    Z = torch.eye(U.shape[1], device=U.device).unsqueeze(0).repeat(batch_size, 1, 1)
+    Z[:, -1, -1] *= torch.sign(torch.linalg.det(torch.matmul(U, Vh)))
+
+    # Construct R.
+    R = torch.matmul(torch.matmul(V, Z), U.permute(0, 2, 1))
+
+    # 5. Recover scale.
+    trace = torch.matmul(R, K).diagonal(offset=0, dim1=-1, dim2=-2).sum(dim=-1)
+    scale = (trace / var1).unsqueeze(dim=-1).unsqueeze(dim=-1)
+
+    # 6. Recover translation.
+    t = mu2 - scale*torch.matmul(R, mu1)
+
+    # 7. Error:
+    S1_hat = scale*torch.matmul(R, S1) + t
+
+    return S1_hat.permute(0, 2, 1)
+
+@torch.jit.script   
+def MPJPE_PA(S1: torch.Tensor, S2: torch.Tensor) -> torch.Tensor:
+    """
+    Compute mean per joint position error in mm after performing Procrustes alignment.
+    Args:
+        S1 (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
+        S2 (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
+    """
+    S1_hat = procrustes_alignment(S1, S2)
+    # return 1000 * torch.sqrt(((S1_hat - S2)** 2).sum(dim=-1)).mean(dim=-1)
+    return 1000 * torch.norm(S1_hat - S2, dim=-1).mean()
+
+@torch.jit.script
+def MPJPE(pred_joints, gt_joints) -> torch.Tensor:
+    """
+    Compute mean per joint position error in mm. before Procrustes alignment.
+    Args:
+        pred_joints (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
+        gt_joints (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
+    """
+    # return 1000 * torch.sqrt(((pred_joints - gt_joints) ** 2).sum(dim=-1)).mean(dim=-1)
+    return 1000 * torch.norm(pred_joints - gt_joints, dim=-1).mean()
+
+@torch.jit.script
+def MPVE(pred_vertexes, gt_vertexes) -> torch.Tensor:
+    """
+    Compute mean per vertex error in mm.
+    Args:
+        pred_vertexes (torch.Tensor): Predicted 3D vertexes of shape (B, N', 3).
+        gt_vertexes (torch.Tensor): Ground truth 3D vertexes of shape (B, N', 3).
+    """
+    # return 1000 * torch.sqrt(((pred_vertexes - gt_vertexes) ** 2).sum(dim=-1)).mean(dim=-1)
+    return 1000 * torch.norm(pred_vertexes - gt_vertexes, dim=-1).mean()
+
+@torch.jit.script
+def MPVE_PA(pred_vertexes, gt_vertexes) -> torch.Tensor:
+    """
+    Compute mean per vertex error in mm. after Procrustes alignment.
+    Args:
+        pred_vertexes (torch.Tensor): Predicted 3D vertexes of shape (B, N', 3).
+        gt_vertexes (torch.Tensor): Ground truth 3D vertexes of shape (B, N', 3).
+    """
+    pred_vertexes_hat = procrustes_alignment(pred_vertexes, gt_vertexes)
+    return 1000 * torch.norm(pred_vertexes_hat - gt_vertexes, dim=-1).mean()
+
+@torch.jit.script
+def MWTE(pred_trans, gt_trans) -> torch.Tensor:
+    """
+    Compute mean wrist translation error in mm.
+    Args:
+        pred_trans (torch.Tensor): Predicted 3D translation of shape (B, 1, 3).
+        gt_trans (torch.Tensor): Ground truth 3D translation of shape (B, 1, 3).
+    """
+    return 1000 * torch.norm(pred_trans - gt_trans, dim=-1).mean()
+
+def MRE(pred_rots, gt_rots) -> torch.Tensor:
+    """
+    Compute mean rotation error (wrist + finger) in [0, pi]
+    Args:
+        pred_rots (torch.Tensor): Predicted 3D rotation of shape (B, 3, 3).
+        gt_rots (torch.Tensor): Ground truth 3D rotation of shape (B, 3, 3).
+    """
+    return rotmat_dist(pred_rots, gt_rots).mean()
+
+
 def decode_pred(pred):
     pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
     B, T = pred['action.trans'].shape[:2]
@@ -52,10 +170,8 @@ def decode_pred(pred):
 
 
 def cal_metrics(pred, true):
-    assert all(isinstance(pred[key], type(true[key])) for key in pred.keys()), "The keys of pred and true must be the same."
-    pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
-    true = {k: torch.as_tensor(v).cuda() for k, v in true.items()}
     '''
+    [Inputs]
     pred = {
         action.theta: torch.Size([B, T, 90])
         action.rot: torch.Size([B, T, 6])
@@ -66,17 +182,30 @@ def cal_metrics(pred, true):
         action.rot: torch.Size([B, T, 6])
         action.trans: torch.Size([B, T, 3])  
     }
-    '''
-    B, T = pred['action.trans'].shape[:2]
-    pred_theta_flatten_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
-    true_theta_flatten_9d = rot6d_to_rotmat(true['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
-    pred_rot_flatten_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
-    true_rot_flatten_9d = rot6d_to_rotmat(true['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
     
+    [Outputs]
     metrics = {
-        'action.theta': rotmat_dist(pred_theta_flatten_9d, true_theta_flatten_9d).mean(),
-        'action.rot': rotmat_dist(pred_rot_flatten_9d, true_rot_flatten_9d).mean(),
-        'action.trans': mse(pred['action.trans'],true['action.trans']),
+        'MPJPE',
+        'MPJPE-PA',
+        'MPVE',
+        'MPVE-PA',
+        'MWTE',
+        'MRE',
+    }
+    '''
+    assert all(isinstance(pred[key], type(true[key])) for key in pred.keys()), "The keys of pred and true must be the same."
+    pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
+    true = {k: torch.as_tensor(v).cuda() for k, v in true.items()}
+    
+    B, T = pred['action.trans'].shape[:2]
+    pred_theta_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6)).view(B, T, 15, 3, 3)  # (B*T*15, 3, 3)
+    true_theta_9d = rot6d_to_rotmat(true['action.theta'].reshape(-1,6)).view(B, T, 15, 3, 3)  # (B*T*15, 3, 3)
+    pred_wrist_rot_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6)).view(B, T, 1, 3, 3)    # (B*T, 3, 3)
+    true_wrist_rot_9d = rot6d_to_rotmat(true['action.rot'].reshape(-1,6)).view(B, T, 1, 3, 3)    # (B*T, 3, 3)
+    pred_rot_flatten_9d = torch.cat([pred_wrist_rot_9d, pred_theta_9d], dim=2).view(-1, 3, 3)
+    true_rot_flatten_9d = torch.cat([true_wrist_rot_9d, true_theta_9d], dim=2).view(-1, 3, 3)
+    metrics = {
+        'MPJPE': MPJPE(pred['action.trans'], true['action.trans']),
     }
     
     return metrics 
