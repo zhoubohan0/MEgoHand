@@ -35,27 +35,27 @@ warnings.simplefilter("ignore", category=FutureWarning)
 
 ## metrics
 @torch.jit.script
-def procrustes_alignment(S1: torch.Tensor, S2: torch.Tensor) -> torch.Tensor:
+def procrustes_alignment(pred_joints: torch.Tensor, true_joints: torch.Tensor) -> torch.Tensor:
     """
     Computes a similarity transform (sR, t) in a batched way that takes
-    a set of 3D points S1 (B, N, 3) closest to a set of 3D points S2 (B, N, 3),
+    a set of 3D points pred_joints (B, N, 3) closest to a set of 3D points true_joints (B, N, 3),
     where R is a 3x3 rotation matrix, t 3x1 translation, s scale.
     i.e. solves the orthogonal Procrutes problem.
     Args:
-        S1 (torch.Tensor): First set of points of shape (B, N, 3).
-        S2 (torch.Tensor): Second set of points of shape (B, N, 3).
+        pred_joints (torch.Tensor): First set of points of shape (B, N, 3).
+        true_joints (torch.Tensor): Second set of points of shape (B, N, 3).
     Returns:
         (torch.Tensor): The first set of points after applying the similarity transformation.
     """
 
-    batch_size = S1.shape[0]
-    S1 = S1.permute(0, 2, 1)
-    S2 = S2.permute(0, 2, 1)
+    batch_size = pred_joints.shape[0]
+    pred_joints = pred_joints.permute(0, 2, 1)
+    true_joints = true_joints.permute(0, 2, 1)
     # 1. Remove mean.
-    mu1 = S1.mean(dim=2, keepdim=True)
-    mu2 = S2.mean(dim=2, keepdim=True)
-    X1 = S1 - mu1
-    X2 = S2 - mu2
+    mu1 = pred_joints.mean(dim=2, keepdim=True)
+    mu2 = true_joints.mean(dim=2, keepdim=True)
+    X1 = pred_joints - mu1
+    X2 = true_joints - mu2
 
     # 2. Compute variance of X1 used for scale.
     var1 = (X1**2).sum(dim=(1,2))
@@ -82,32 +82,32 @@ def procrustes_alignment(S1: torch.Tensor, S2: torch.Tensor) -> torch.Tensor:
     t = mu2 - scale*torch.matmul(R, mu1)
 
     # 7. Error:
-    S1_hat = scale*torch.matmul(R, S1) + t
+    pred_joints_hat = scale*torch.matmul(R, pred_joints) + t
 
-    return S1_hat.permute(0, 2, 1)
+    return pred_joints_hat.permute(0, 2, 1)
 
 @torch.jit.script   
-def MPJPE_PA(S1: torch.Tensor, S2: torch.Tensor) -> torch.Tensor:
+def MPJPE_PA(pred_joints: torch.Tensor, true_joints: torch.Tensor) -> torch.Tensor:
     """
     Compute mean per joint position error in mm after performing Procrustes alignment.
     Args:
-        S1 (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
-        S2 (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
+        pred_joints (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
+        true_joints (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
     """
-    S1_hat = procrustes_alignment(S1, S2)
-    # return 1000 * torch.sqrt(((S1_hat - S2)** 2).sum(dim=-1)).mean(dim=-1)
-    return 1000 * torch.norm(S1_hat - S2, dim=-1).mean()
+    pred_joints_hat = procrustes_alignment(pred_joints, true_joints)
+    # return 1000 * torch.sqrt(((pred_joints_hat - true_joints)** 2).sum(dim=-1)).mean(dim=-1)
+    return 1000 * torch.norm(pred_joints_hat - true_joints, dim=-1).mean()
 
 @torch.jit.script
-def MPJPE(pred_joints, gt_joints) -> torch.Tensor:
+def MPJPE(pred_joints, true_joints) -> torch.Tensor:
     """
     Compute mean per joint position error in mm. before Procrustes alignment.
     Args:
         pred_joints (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
-        gt_joints (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
+        true_joints (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
     """
-    # return 1000 * torch.sqrt(((pred_joints - gt_joints) ** 2).sum(dim=-1)).mean(dim=-1)
-    return 1000 * torch.norm(pred_joints - gt_joints, dim=-1).mean()
+    # return 1000 * torch.sqrt(((pred_joints - true_joints) ** 2).sum(dim=-1)).mean(dim=-1)
+    return 1000 * torch.norm(pred_joints - true_joints, dim=-1).mean()
 
 @torch.jit.script
 def MPVE(pred_vertexes, gt_vertexes) -> torch.Tensor:
@@ -151,64 +151,87 @@ def MRE(pred_rots, gt_rots) -> torch.Tensor:
     return rotmat_dist(pred_rots, gt_rots).mean()
 
 
-def decode_pred(pred):
-    pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
-    B, T = pred['action.trans'].shape[:2]
-    pred_theta_flatten_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
-    pred_theta = batch_rot2aa(pred_theta_flatten_9d).view(B, T, 45)    
-    pred_theta9d = pred_theta_flatten_9d.reshape(B, T, 15, 3, 3)  
-    pred_rot_flatten_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
-    pred_rot = batch_rot2aa(pred_rot_flatten_9d).view(B, T, 3)
-    pred_rot9d = pred_rot_flatten_9d.view(B, T, 3, 3) 
+def decode_mano_para_6d(mano_dict):
+    '''
+    Args:
+        mano_dict: dict
+            action.theta: torch.Size([B, T, 90])
+            action.rot: torch.Size([B, T, 6])
+            action.trans: torch.Size([B, T, 3])  
+    Returns:
+        mano_dict: dict
+            theta: torch.Size([B, T, 45])
+            theta9d: torch.Size([B, T, 15, 3, 3])
+            rot: torch.Size([B, T, 3])
+            rot9d: torch.Size([B, T, 3, 3])
+            trans: torch.Size([B, T, 3])  
+    '''
+    mano_dict = {k: torch.as_tensor(v).cuda() for k, v in mano_dict.items()}
+    B, T = mano_dict['action.trans'].shape[:2]
+    theta_flatten_9d = rot6d_to_rotmat(mano_dict['action.theta'].reshape(-1,6))  # (B*T*15, 3, 3)
+    theta = batch_rot2aa(theta_flatten_9d).view(B, T, 45)    
+    theta9d = theta_flatten_9d.reshape(B, T, 15, 3, 3)  
+    rot_flatten_9d = rot6d_to_rotmat(mano_dict['action.rot'].reshape(-1,6))    # (B*T, 3, 3)
+    rot = batch_rot2aa(rot_flatten_9d).view(B, T, 3)
+    rot9d = rot_flatten_9d.view(B, T, 3, 3) 
     return dict(
-        theta=pred_theta,           # (B, T, 45)
-        theta9d=pred_theta9d,       # (B, T, 15, 3, 3)
-        rot=pred_rot,               # (B, T, 3)
-        rot9d=pred_rot9d,           # (B, T, 3, 3)
-        trans=pred['action.trans']  # (B, T, 3)
+        theta=theta,           # (B, T, 45)
+        theta9d=theta9d,       # (B, T, 15, 3, 3)
+        rot=rot,               # (B, T, 3)
+        rot9d=rot9d,           # (B, T, 3, 3)
+        trans=mano_dict['action.trans']  # (B, T, 3)
     )
 
 
-def cal_metrics(pred, true):
+def calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints):
     '''
-    [Inputs]
-    pred = {
-        action.theta: torch.Size([B, T, 90])
-        action.rot: torch.Size([B, T, 6])
-        action.trans: torch.Size([B, T, 3])  
-    }     
-    gt = {
-        action.theta: torch.Size([B, T, 90])
-        action.rot: torch.Size([B, T, 6])
-        action.trans: torch.Size([B, T, 3])  
-    }
-    
-    [Outputs]
-    metrics = {
-        'MPJPE',
-        'MPJPE-PA',
-        'MPVE',
-        'MPVE-PA',
-        'MWTE',
-        'MRE',
-    }
+    Args:
+        pred_hand_vertices: torch.Size([B, L, 778, 3])
+        pred_hand_joints: torch.Size([B, L, 21, 3])
+        true_hand_vertices: torch.Size([B, L, 778, 3])
+        true_hand_joints: torch.Size([B, L, 21, 3])
+    Returns:
+        metrics: dict
+            'MPJPE',
+            'MPJPE-PA',
+            'MPVE',
+            'MPVE-PA',
+
     '''
-    assert all(isinstance(pred[key], type(true[key])) for key in pred.keys()), "The keys of pred and true must be the same."
-    pred = {k: torch.as_tensor(v).cuda() for k, v in pred.items()}
-    true = {k: torch.as_tensor(v).cuda() for k, v in true.items()}
-    
-    B, T = pred['action.trans'].shape[:2]
-    pred_theta_9d = rot6d_to_rotmat(pred['action.theta'].reshape(-1,6)).view(B, T, 15, 3, 3)  # (B*T*15, 3, 3)
-    true_theta_9d = rot6d_to_rotmat(true['action.theta'].reshape(-1,6)).view(B, T, 15, 3, 3)  # (B*T*15, 3, 3)
-    pred_wrist_rot_9d = rot6d_to_rotmat(pred['action.rot'].reshape(-1,6)).view(B, T, 1, 3, 3)    # (B*T, 3, 3)
-    true_wrist_rot_9d = rot6d_to_rotmat(true['action.rot'].reshape(-1,6)).view(B, T, 1, 3, 3)    # (B*T, 3, 3)
-    pred_rot_flatten_9d = torch.cat([pred_wrist_rot_9d, pred_theta_9d], dim=2).view(-1, 3, 3)
-    true_rot_flatten_9d = torch.cat([true_wrist_rot_9d, true_theta_9d], dim=2).view(-1, 3, 3)
-    metrics = {
-        'MPJPE': MPJPE(pred['action.trans'], true['action.trans']),
+    return {
+        'MPJPE': MPJPE(pred_hand_joints, true_hand_joints),
+        'MPJPE-PA': MPJPE_PA(pred_hand_joints, true_hand_joints),
+        'MPVE': MPVE(pred_hand_vertices, true_hand_vertices),
+        'MPVE-PA': MPVE_PA(pred_hand_vertices, true_hand_vertices),
     }
-    
-    return metrics 
+
+def calculate_mano_parameters_metrics(pred_mano, true_mano):
+    '''
+    Args:
+        pred_mano: dict
+            theta: torch.Size([B, T, 45])
+            theta9d: torch.Size([B, T, 15, 3, 3])
+            rot: torch.Size([B, T, 3])
+            rot9d: torch.Size([B, T, 3, 3])
+            trans: torch.Size([B, T, 3])
+        true_mano: dict
+            theta: torch.Size([B, T, 45])
+            theta9d: torch.Size([B, T, 15, 3, 3])
+            rot: torch.Size([B, T, 3])
+            rot9d: torch.Size([B, T, 3, 3])
+            trans: torch.Size([B, T, 3])
+    Returns:
+        metrics: dict
+            'MWTE':
+            'MRE': 
+    '''
+    return {
+        'MWTE': MWTE(pred_mano['trans'], true_mano['trans']),
+        'MRE': MRE(
+            torch.cat([pred_mano['rot9d'].unsqueeze(2), pred_mano['theta9d']], dim=2).view(-1, 3, 3), 
+            torch.cat([true_mano['rot9d'].unsqueeze(2), true_mano['theta9d']], dim=2).view(-1, 3, 3)
+        ),
+    }
 
 def conduct_testing(cascaded_dataset, policy, batch_size):
     avg_metrics = {
@@ -223,7 +246,7 @@ def conduct_testing(cascaded_dataset, policy, batch_size):
         gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
         pred_action = policy.get_action(step_data)
         
-        batch_avg_metrics = cal_metrics(pred_action, gt_action)
+        batch_avg_metrics = calculate_mano_outputs_metrics(pred_action, gt_action)
         pbar.set_postfix(batch_avg_metrics)
         for k, v in batch_avg_metrics.items():
             avg_metrics[k].append(v.item())
@@ -280,14 +303,8 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             out_dir = f'vis_depth/{dataset_name}_traj{i_traj:03d}_T{T:03d}'
             for t in range(T):
                 visualize_RGBD(depth=depth_pred[t], depth_gt=depth_gt[t], rgb=rgb[t], save_file=os.path.join(out_dir, f'{t:03d}.png'))
-            '''
-            ## calculate trajectory loss: TODO
-            gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
-            batch_avg_metrics = cal_metrics(pred_action, gt_action)
-            print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
-            '''
-            ## visualize
-            pred_mano = decode_pred(pred_action)
+
+            pred_mano = decode_mano_para_6d(pred_action)
             '''
             pred_mano
             - theta: (T, W, 45)
@@ -301,22 +318,26 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             task_name = storage_data['task_name'][0][0]
             vis_data = dataset.task_example_for_vis(task_name)
             assert all([x in vis_data['save_video_file'] for x in task_name.split('/')])
+            '''
             # save original video
-            # offline_render(**vis_data)
+            offline_render(**vis_data)
+            '''
             vis_data['save_video_file'] = f'_avg'.join(os.path.splitext(vis_data['save_video_file']))
-            # overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts'
+            '''
             mano_theta9d = batch_rodrigues(torch.Tensor(storage_data['state.theta']).view(-1,3).cuda()).view(-1,15,3,3)
-            mano_beta = torch.Tensor(storage_data['state.beta']).squeeze(1).cuda()
-            init_rot = torch.Tensor(storage_data['state.rot']).squeeze(1).cuda()
-            init_trans = torch.Tensor(storage_data['state.trans']).squeeze(1).cuda()
-            extrinsic_matrix_sequence = torch.Tensor(vis_data['extrinsic_matrix_sequence']).cuda()
-            
             # absolute world hand wrist pose
             ref_state_rot_world, ref_state_trans_world = get_pose12d_from_camera_to_world(
                 torch.Tensor(storage_data['state.rot'].squeeze(1)).cuda(),
                 torch.Tensor(storage_data['state.trans'].squeeze(1)).cuda(),
                 extrinsic_matrix_sequence[:T]
             )
+            '''
+            mano_beta = torch.Tensor(storage_data['state.beta']).squeeze(1).cuda()
+            init_rot = torch.Tensor(storage_data['state.rot']).squeeze(1).cuda()
+            init_trans = torch.Tensor(storage_data['state.trans']).squeeze(1).cuda()
+            extrinsic_matrix_sequence = torch.Tensor(vis_data['extrinsic_matrix_sequence']).cuda()
+            
+            
                             
             pred_mano_rot9d, pred_mano_trans = [], []
             for t in range(T):
@@ -338,12 +359,12 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             
             # rotation sequence smooth: temporal convolution, followed by an orthogonalisation
             indices = (torch.arange(T).unsqueeze(1) - torch.arange(window_size).unsqueeze(0) + (window_size - 1)).flip(1)
-            pred_mano_theta_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth = [], [], []
+            pred_mano_theta9d_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth = [], [], []
             L = T + window_size - 1
             for t in range(L):
                 pred_mano_rot9d_chunk_t = pred_mano_rot9d[indices == t]  # at most (W, 3, 3)
                 pred_mano_trans_chunk_t = pred_mano_trans[indices == t]  # at most (W, 3)
-                pred_mano_theta_chunk_t = pred_mano['theta9d'][indices == t]  # at most (W, 15, 3, 3)
+                pred_mano_theta9d_chunk_t = pred_mano['theta9d'][indices == t]  # at most (W, 15, 3, 3)
                 chunk_size = len(pred_mano_rot9d_chunk_t)
                 '''
                 weights = torch.exp(-1.5 * torch.arange(chunk_size, dtype=torch.float32, device=pred_mano_trans_chunk_t.device))
@@ -352,20 +373,51 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 weights = torch.ones(chunk_size, device=pred_mano_trans_chunk_t.device) / chunk_size  # average
                 U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_rot9d_chunk_t * weights.view(-1,1,1), dim=0))
                 pred_mano_rot9d_smooth.append(U @ Vh)  # (3, 3)
-                U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_theta_chunk_t * weights.view(-1,1,1,1), dim=0))
-                pred_mano_theta_smooth.append(U @ Vh)  # (15, 3, 3)
+                U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_theta9d_chunk_t * weights.view(-1,1,1,1), dim=0))
+                pred_mano_theta9d_smooth.append(U @ Vh)  # (15, 3, 3)
                 pred_mano_trans_smooth.append(torch.sum(pred_mano_trans_chunk_t * weights.view(-1,1), dim=0))  # (3)
                 # print(f'[{t}/{L}]')
-                # print(f'origin: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_chunk_t[0]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_chunk_t[0]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta_chunk_t[0]):.6f}')
-                # print(f'smooth: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_smooth[t]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_smooth[t]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta_smooth[t]):.6f}')
-            pred_mano_rot9d_smooth = batch_rot2aa(torch.stack(pred_mano_rot9d_smooth)).view(L,3)   # (L, 3, 3)
-            pred_mano_trans_smooth = torch.stack(pred_mano_trans_smooth)  # (L, 3)
-            pred_mano_theta_smooth = batch_rot2aa(torch.stack(pred_mano_theta_smooth).view(-1,3,3)).view(L,45)  # (L, 45)
-            pred_mano_beta_smooth = repeat(mano_beta[0], 'L -> B L', B=L)  # (L, 10)
-            pred_hand_vertices = mano_forward(pred_mano_theta_smooth, pred_mano_beta_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth, side)[0]
+                # print(f'origin: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_chunk_t[0]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_chunk_t[0]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta9d_chunk_t[0]):.6f}')
+                # print(f'smooth: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_smooth[t]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_smooth[t]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta9d_smooth[t]):.6f}')
+            pred_mano_rot9d_smooth = torch.stack(pred_mano_rot9d_smooth).view(L,3,3)                    # (L, 3, 3)
+            pred_mano_rot_smooth = batch_rot2aa(pred_mano_rot9d_smooth).view(L,3)                       # (L, 3)
+            pred_mano_theta9d_smooth = torch.stack(pred_mano_theta9d_smooth).view(L,15,3,3)             # (L, 15, 3, 3)
+            pred_mano_theta_smooth = batch_rot2aa(pred_mano_theta9d_smooth.view(-1,3,3)).view(L,45)     # (L, 45)
+            pred_mano_trans_smooth = torch.stack(pred_mano_trans_smooth)                                # (L, 3)
+            pred_mano_beta_smooth = repeat(mano_beta[0], 'L -> B L', B=L)                               # (L, 10)
+            pred_mano_smooth = {
+                'theta': pred_mano_theta_smooth,
+                'theta9d': pred_mano_theta9d_smooth,
+                'rot': pred_mano_rot_smooth,
+                'rot9d': pred_mano_rot9d_smooth,
+                'trans': pred_mano_trans_smooth,
+                'beta': pred_mano_beta_smooth,
+            }
+            pred_hand_vertices, pred_hand_joints = mano_forward(  # (L, 778, 3), (L, 21, 3)
+                pred_mano_theta_smooth, 
+                pred_mano_beta_smooth, 
+                pred_mano_rot_smooth, 
+                pred_mano_trans_smooth, 
+                side
+            )[:2]
+            
+            ## calculate trajectory metrics: TODO
+            true_mano = decode_mano_para_6d({k: v for k, v in step_data.items() if k.startswith("action.")})
+            true_hand_vertices, true_hand_joints = mano_forward(  # (L, 778, 3), (L, 21, 3)
+                true_mano['theta'], 
+                true_mano['beta'], 
+                true_mano['rot9d'], 
+                true_mano['trans'], 
+                side
+            )[:2]
+            batch_avg_metrics = {
+                **calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints),
+                **calculate_mano_parameters_metrics(pred_mano_smooth, true_mano),
+            }
+            print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
+            ## visualize: overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts', save_video_file
             vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
-            # visualize
-            # vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
+            vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
             offline_render(**vis_data)
             breakpoint()
 
