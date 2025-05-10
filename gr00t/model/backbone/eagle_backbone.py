@@ -139,6 +139,7 @@ class EagleBackbone(nn.Module):
         use_local_eagle_hg_model: bool = True,
         # customize
         depth_model_path: str = "",  
+        depth_mode: str = "abs",
         multimodal: str = 'tv',
     ):
         super().__init__()
@@ -151,7 +152,7 @@ class EagleBackbone(nn.Module):
         self.reproject_vision = reproject_vision
         self.incorporate_depth = os.path.exists(depth_model_path)
         self.multimodal = multimodal
-
+        self.depth_mode = depth_mode
         # self.unidepth_loss = UnidepthLoss()
         self.emb_loss = mse
         
@@ -167,7 +168,7 @@ class EagleBackbone(nn.Module):
                     'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
                     'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
                 }
-                depth_anything_encoder_type = 'vitl'
+                depth_anything_encoder_type = 'vits'
                 self.depth_model = DepthAnythingV2(**depth_anything_model_configs[depth_anything_encoder_type])
                 ckpt_path = os.path.join(depth_model_path, f'depth_anything_v2_{depth_anything_encoder_type}.pth')
             elif "unidepth" in depth_model_path:
@@ -279,8 +280,15 @@ class EagleBackbone(nn.Module):
         self.set_frozen_modules_to_eval_mode()
         if self.incorporate_depth:
             depth_true = vl_input['depth.ego_view'].squeeze(1).detach()    # (B, 1, H, W)
-            depth_pred = self.depth_model.forward_depth_model(vl_input["video.depthmodel"].squeeze(1)).detach() # depth estimation
-            depth_pred = resize(clip_depth(depth_pred))  # clip (TODO: reletive (x - x.min()) / (x.max() - x.min()))
+            # depth estimation
+            depth_pred = self.depth_model.forward_depth_model(vl_input["video.depthmodel"].squeeze(1)).detach() # (B, 1, H, W)
+            vlm_output["depth_pred"] = depth_pred  # for test visualization
+            if "abs" in self.depth_mode:  # clip + resize
+                depth_pred = resize(clip_depth(depth_pred))
+            elif "rel" in self.depth_mode:  # 2 * (x - x.min()) / (x.max() - x.min()) - 1
+                depth_pred = minmaxscale(resize(depth_pred))
+            else:
+                raise ValueError(f"Invalid depth mode: {self.depth_mode}")
             '''
             # visualization
             import matplotlib.pyplot as plt
@@ -302,7 +310,6 @@ class EagleBackbone(nn.Module):
             '''
             depth_feature = self.depth_encoder(depth_pred)
             depth_feature_true = self.depth_encoder(depth_true)
-            # vlm_output["depth_pred"] = depth_pred  # for test visualization
             # vlm_output["depth_loss"] = self.unidepth_loss(depth_pred, depth_true)
             vlm_output["depth_feature_loss"] = self.emb_loss(depth_feature, depth_feature_true)  # mse
         else:

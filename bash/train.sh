@@ -3,6 +3,7 @@
 multimodal="tv"
 dataset_path="/mnt/vepfs/zbh/MHMP/datasets/"
 depth_model_path="/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
+depth_mode="abs" 
 dataset_list=""  # Initialize as empty array, separate by comma
 exp_name="runs"   
 debug=0
@@ -26,6 +27,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -depth_model_path)
       depth_model_path="$2"
+      shift 2
+      ;;
+    -depth_mode)
+      depth_mode="$2"
       shift 2
       ;;
     -dataset_list)
@@ -73,13 +78,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "multimodal: $multimodal, dataset_path: $dataset_path, depth_model_path: $depth_model_path, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, debug: $debug, device: $device, lora_rank: $lora_rank, tune_llm: $tune_llm, tune_visual: $tune_visual, batch_size: $batch_size, resume: $resume"
+echo "multimodal: $multimodal, dataset_path: $dataset_path, depth_model_path: $depth_model_path, depth_mode: $depth_mode, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, debug: $debug, device: $device, lora_rank: $lora_rank, tune_llm: $tune_llm, tune_visual: $tune_visual, batch_size: $batch_size, resume: $resume"
 
 CUDA_VISIBLE_DEVICES=$device python -m scripts.train \
   --num_gpus $(echo $device | tr -cd ',' | wc -c | awk '{print $1 + 1}') \
   --multimodal "$multimodal" \
   --dataset_path "$dataset_path" \
   --depth_model_path "$depth_model_path" \
+  --depth_mode "$depth_mode" \
   --exp_name "$exp_name" \
   --debug "$debug" \
   --dataset_list "$dataset_list" \

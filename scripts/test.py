@@ -16,14 +16,17 @@
 import argparse
 import warnings
 import numpy as np
-import cv2
+import cv2, csv
 import torch
 from einops import repeat
 from tqdm import tqdm
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, Subset
+from multiprocessing.pool import ThreadPool
+import pandas as pd
+
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
-from gr00t.utils.util import default_collate_fn, mse, glance_dict, visualize_RGBD, resize
+from gr00t.utils.util import default_collate_fn, mse, glance_dict, visualize_RGBD, resize, timer
 from mhmp_vis.dataset_loader import *
 from mhmp_vis.utils.rot import rot6d_to_rotmat, rotmat_dist, decode_absolute_pose_from_relative, batch_rot2aa, get_pose12d_from_camera_to_world, batch_rodrigues
 from mhmp_vis.utils.util import mano_forward
@@ -89,57 +92,57 @@ def procrustes_alignment(pred_joints: torch.Tensor, true_joints: torch.Tensor) -
 @torch.jit.script   
 def MPJPE_PA(pred_joints: torch.Tensor, true_joints: torch.Tensor) -> torch.Tensor:
     """
-    Compute mean per joint position error in mm after performing Procrustes alignment.
+    Compute mean per joint position error in cm after performing Procrustes alignment.
     Args:
         pred_joints (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
         true_joints (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
     """
     pred_joints_hat = procrustes_alignment(pred_joints, true_joints)
-    # return 1000 * torch.sqrt(((pred_joints_hat - true_joints)** 2).sum(dim=-1)).mean(dim=-1)
-    return 1000 * torch.norm(pred_joints_hat - true_joints, dim=-1).mean()
+    # return 100 * torch.sqrt(((pred_joints_hat - true_joints)** 2).sum(dim=-1)).mean(dim=-1)
+    return 100 * torch.norm(pred_joints_hat - true_joints, dim=-1).mean()
 
 @torch.jit.script
 def MPJPE(pred_joints, true_joints) -> torch.Tensor:
     """
-    Compute mean per joint position error in mm. before Procrustes alignment.
+    Compute mean per joint position error in cm. before Procrustes alignment.
     Args:
         pred_joints (torch.Tensor): Predicted 3D joints of shape (B, N, 3).
         true_joints (torch.Tensor): Ground truth 3D joints of shape (B, N, 3).
     """
-    # return 1000 * torch.sqrt(((pred_joints - true_joints) ** 2).sum(dim=-1)).mean(dim=-1)
-    return 1000 * torch.norm(pred_joints - true_joints, dim=-1).mean()
+    # return 100 * torch.sqrt(((pred_joints - true_joints) ** 2).sum(dim=-1)).mean(dim=-1)
+    return 100 * torch.norm(pred_joints - true_joints, dim=-1).mean()
 
 @torch.jit.script
 def MPVE(pred_vertexes, gt_vertexes) -> torch.Tensor:
     """
-    Compute mean per vertex error in mm.
+    Compute mean per vertex error in cm.
     Args:
         pred_vertexes (torch.Tensor): Predicted 3D vertexes of shape (B, N', 3).
         gt_vertexes (torch.Tensor): Ground truth 3D vertexes of shape (B, N', 3).
     """
-    # return 1000 * torch.sqrt(((pred_vertexes - gt_vertexes) ** 2).sum(dim=-1)).mean(dim=-1)
-    return 1000 * torch.norm(pred_vertexes - gt_vertexes, dim=-1).mean()
+    # return 100 * torch.sqrt(((pred_vertexes - gt_vertexes) ** 2).sum(dim=-1)).mean(dim=-1)
+    return 100 * torch.norm(pred_vertexes - gt_vertexes, dim=-1).mean()
 
 @torch.jit.script
 def MPVE_PA(pred_vertexes, gt_vertexes) -> torch.Tensor:
     """
-    Compute mean per vertex error in mm. after Procrustes alignment.
+    Compute mean per vertex error in cm. after Procrustes alignment.
     Args:
         pred_vertexes (torch.Tensor): Predicted 3D vertexes of shape (B, N', 3).
         gt_vertexes (torch.Tensor): Ground truth 3D vertexes of shape (B, N', 3).
     """
     pred_vertexes_hat = procrustes_alignment(pred_vertexes, gt_vertexes)
-    return 1000 * torch.norm(pred_vertexes_hat - gt_vertexes, dim=-1).mean()
+    return 100 * torch.norm(pred_vertexes_hat - gt_vertexes, dim=-1).mean()
 
 @torch.jit.script
 def MWTE(pred_trans, gt_trans) -> torch.Tensor:
     """
-    Compute mean wrist translation error in mm.
+    Compute mean wrist translation error in cm.
     Args:
         pred_trans (torch.Tensor): Predicted 3D translation of shape (B, 1, 3).
         gt_trans (torch.Tensor): Ground truth 3D translation of shape (B, 1, 3).
     """
-    return 1000 * torch.norm(pred_trans - gt_trans, dim=-1).mean()
+    return 100 * torch.norm(pred_trans - gt_trans, dim=-1).mean()
 
 def MRE(pred_rots, gt_rots) -> torch.Tensor:
     """
@@ -183,79 +186,74 @@ def decode_mano_para_6d(mano_dict):
     )
 
 
-def calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints):
+def calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints, mask):
     '''
     Args:
-        pred_hand_vertices: torch.Size([B, L, 778, 3])
-        pred_hand_joints: torch.Size([B, L, 21, 3])
-        true_hand_vertices: torch.Size([B, L, 778, 3])
-        true_hand_joints: torch.Size([B, L, 21, 3])
+        pred_hand_vertices: torch.Size([L, 778, 3])
+        pred_hand_joints: torch.Size([L, 21, 3])
+        true_hand_vertices: torch.Size([L, 778, 3])
+        true_hand_joints: torch.Size([L, 21, 3])
+    mask: torch.Size([T])
+        default to be True
+    
     Returns:
         metrics: dict
             'MPJPE',
             'MPJPE-PA',
             'MPVE',
             'MPVE-PA',
-
     '''
     return {
-        'MPJPE': MPJPE(pred_hand_joints, true_hand_joints),
-        'MPJPE-PA': MPJPE_PA(pred_hand_joints, true_hand_joints),
-        'MPVE': MPVE(pred_hand_vertices, true_hand_vertices),
-        'MPVE-PA': MPVE_PA(pred_hand_vertices, true_hand_vertices),
+        'MPJPE': MPJPE(pred_hand_joints[mask], true_hand_joints[mask]).item(),
+        'MPJPE-PA': MPJPE_PA(pred_hand_joints[mask], true_hand_joints[mask]).item(),
+        'MPVE': MPVE(pred_hand_vertices[mask], true_hand_vertices[mask]).item(),
+        'MPVE-PA': MPVE_PA(pred_hand_vertices[mask], true_hand_vertices[mask]).item(),
     }
 
-def calculate_mano_parameters_metrics(pred_mano, true_mano):
+def calculate_mano_parameters_metrics(pred_mano, true_mano, mask):
     '''
     Args:
         pred_mano: dict
-            theta: torch.Size([B, T, 45])
-            theta9d: torch.Size([B, T, 15, 3, 3])
-            rot: torch.Size([B, T, 3])
-            rot9d: torch.Size([B, T, 3, 3])
-            trans: torch.Size([B, T, 3])
+            theta9d: torch.Size([T, 15, 3, 3])
+            rot9d: torch.Size([T, 3, 3])
+            trans: torch.Size([T, 3])
         true_mano: dict
-            theta: torch.Size([B, T, 45])
-            theta9d: torch.Size([B, T, 15, 3, 3])
-            rot: torch.Size([B, T, 3])
-            rot9d: torch.Size([B, T, 3, 3])
-            trans: torch.Size([B, T, 3])
+            theta9d: torch.Size([T, 15, 3, 3])
+            rot9d: torch.Size([T, 3, 3])
+            trans: torch.Size([T, 3])
+        mask: torch.Size([T])
+            default to be True
+    
     Returns:
         metrics: dict
-            'MWTE':
-            'MRE': 
+            'MWTE',
+            'MRE'
     '''
     return {
-        'MWTE': MWTE(pred_mano['trans'], true_mano['trans']),
+        'MWTE': MWTE(pred_mano['trans'][mask], true_mano['trans'][mask]).item(),
         'MRE': MRE(
-            torch.cat([pred_mano['rot9d'].unsqueeze(2), pred_mano['theta9d']], dim=2).view(-1, 3, 3), 
-            torch.cat([true_mano['rot9d'].unsqueeze(2), true_mano['theta9d']], dim=2).view(-1, 3, 3)
-        ),
+            torch.cat([pred_mano['rot9d'].unsqueeze(1), pred_mano['theta9d']], dim=1)[mask].view(-1, 3, 3), 
+            torch.cat([true_mano['rot9d'].unsqueeze(1), true_mano['theta9d']], dim=1)[mask].view(-1, 3, 3)
+        ).item(),
     }
 
-def conduct_testing(cascaded_dataset, policy, batch_size):
-    avg_metrics = {
-        'action.theta': [],
-        'action.rot': [],
-        'action.trans': [],
-    }
-    test_dataloader = DataLoader(cascaded_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, drop_last=False, collate_fn=default_collate_fn)
-    pbar = tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc="Testing", unit="batch", leave=False, dynamic_ncols=True, position=0)
-    for i, step_data in pbar:
-        # inference
-        gt_action = {k: v for k, v in step_data.items() if k.startswith("action.")}
-        pred_action = policy.get_action(step_data)
-        
-        batch_avg_metrics = calculate_mano_outputs_metrics(pred_action, gt_action)
-        pbar.set_postfix(batch_avg_metrics)
-        for k, v in batch_avg_metrics.items():
-            avg_metrics[k].append(v.item())
-        if i % 10 == 0:
-            avg_mean_metrics = {k: np.mean(v) for k, v in avg_metrics.items()}
-            print(f"{i+1} Batch Average: {avg_mean_metrics}")
-
-
-def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
+def test_and_visualize(
+    cascaded_dataset, policy,
+    vis_dep_gen=False, vis_ren_ori=False, vis_ren_gen=False,
+):
+    class RefDataset(Dataset):
+        def __init__(self, dataset, sample_idx, length):
+            self.dataset = dataset
+            self.sample_idx = sample_idx
+            self.length = length
+            
+        def __len__(self):
+            return self.length
+            
+        def __getitem__(self, idx):
+            sample = self.dataset.__get_ref_item__(self.sample_idx + idx, device='cpu')
+            return {k: v.cuda() for k, v in sample.items()}
+    
     def truncate_vis_data(vis_data, trunk_len):
         vis_data_copy = vis_data.copy()
         for k in ['image_filenames', 'cam_left_hand_verts', 'cam_right_hand_verts', 'world_left_hand_verts', 'world_right_hand_verts', 'extrinsic_matrix_sequence']:
@@ -265,21 +263,85 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 vis_data_copy[f'{view}_object_dict_list'][i][f'{view}_object_verts'] = vis_data_copy[f'{view}_object_dict_list'][i][f'{view}_object_verts'][:trunk_len]
         # for k in vis_data_copy: print(k, len(vis_data_copy[k]) if vis_data_copy[k] is not None else '')
         return vis_data_copy
+    
+    # record metrics
+    metrics_file = os.path.join(os.path.dirname(args.pretrain_ckpt), 'eval_metrics.csv')  # TODO
+    fieldnames = ['Dataset', 'Trajectory', 'Frames', 'MPJPE', 'MPJPE-PA', 'MPVE', 'MPVE-PA', 'MWTE', 'MRE']
+
+    # Read existing entries into a set for quick lookup
+    metrics_backup = set()
+    if os.path.isfile(metrics_file):
+        with open(metrics_file, 'r') as f:
+            reader = csv.DictReader(f)
+            metrics_backup = {(row['Dataset'], int(row['Trajectory'])) for row in reader}
+        writer = csv.DictWriter(open(metrics_file, 'a', newline=''), fieldnames=fieldnames)
+    else:
+        writer = csv.DictWriter(open(metrics_file, 'w', newline=''), fieldnames=fieldnames)
+        writer.writeheader()
+    
     window_size = cascaded_dataset.dataset_list[0].data_storage.window_size
     side = cascaded_dataset.dataset_list[0].data_storage.side
     # get all trajectories index in cascaded_dataset
-    all_trajectory_index = dict()
+    all_valid_trajectory_range = dict()
     for dataset_idx in range(len(cascaded_dataset.dataset_list)):
          dataset = cascaded_dataset.dataset_list[dataset_idx]
-         all_trajectory_index[str(dataset)] = np.array(dataset.data_storage.valid_trajectory_range) + cascaded_dataset.cumsum_length_list[dataset_idx]
+         all_valid_trajectory_range[str(dataset)] = np.array(dataset.data_storage.valid_trajectory_range) + cascaded_dataset.cumsum_length_list[dataset_idx]
     # Visualize K trajectories for each dataset 
-    for dataset_name, trajectory_range in all_trajectory_index.items():
-        vis_trajectory_range = trajectory_range[np.random.choice(len(trajectory_range), per_vis, replace=False)] if len(trajectory_range) > per_vis and per_vis!= -1 else trajectory_range
-        for i_traj in range(len(vis_trajectory_range)):
-            b, e = vis_trajectory_range[i_traj]
-            T = e - b
-            ## inference
+    for dataset_name, valid_trajectory_range in all_valid_trajectory_range.items():
+        pbar = tqdm(range(len(valid_trajectory_range)), desc=f"Visualizing {dataset_name}", unit="trajectory", leave=False, dynamic_ncols=True, position=0)
+        for i_traj in pbar:
+            if (dataset_name, i_traj) in metrics_backup:
+                continue
+            b, e = valid_trajectory_range[i_traj]
+            T = int(e - b)
+            L = T + window_size - 1
+            
+            ## get data
+            # 1. step_data: only used for inference because of relative pose
+            '''
+            # slower
+            with timer('step_data_loader'):
+                step_loader = DataLoader(
+                    Subset(cascaded_dataset, range(b, e)),
+                    batch_size=T,  # Load entire trajectory at once
+                    num_workers=4,
+                    collate_fn=default_collate_fn,
+                    pin_memory=True
+                )
+                step_data = next(iter(step_loader))
+            '''
             step_data = default_collate_fn([cascaded_dataset[_] for _ in range(b,e)])
+
+            # 2. ref_data: used for initial MANO parameters and GT MANO parameters
+            dataset_idx, sample_idx = cascaded_dataset.get_dataset_sample_id_by_idx(b)
+            dataset = cascaded_dataset.dataset_list[dataset_idx]
+            '''
+            # slower
+            with timer('ref_data_loader'):
+                ref_loader = DataLoader(
+                    RefDataset(dataset, sample_idx, T),
+                    batch_size=T,  # Load entire trajectory at once
+                    num_workers=4,
+                    collate_fn=default_collate_fn,
+                    pin_memory=True
+                )
+                ref_data = next(iter(ref_loader))
+            '''
+            ref_data = default_collate_fn([dataset.__get_ref_item__(sample_idx+_) for _ in range(T)])
+
+            assert len(np.unique(ref_data['task_name'])) == 1
+            # 3. vis_data: occupation for visualization
+            task_name = ref_data['task_name'][0][0]
+            if 'subtask' in task_name:
+                task_name, subtask = os.path.split(task_name)
+                isub = int(subtask.replace('subtask', ''))
+            else:
+                isub = 0    
+            vis_data = dataset.task_example_for_vis(task_name, isub)
+            while L + 1 != len(vis_data['extrinsic_matrix_sequence']):
+                isub += 1
+                vis_data = dataset.task_example_for_vis(task_name, isub)
+            assert all([x in vis_data['save_video_file'] for x in task_name.split('/')])
             '''
             # debug single step inference
             pred_action_single = {
@@ -294,56 +356,46 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                     pred_action_single[k].append(pred_action_t[k])
             pred_action = {k: np.concatenate(v, 0) for k, v in pred_action_single.items()}
             '''
-            # pred_action = policy.get_action(step_data)
             ## visualize depth prediction
             pred_action, mid_info = policy.get_action(step_data, True)
-            depth_pred = mid_info['depth_pred'].squeeze(1).cpu().numpy()
-            depth_gt = step_data['depth.ego_view'].squeeze().cpu().numpy()
-            rgb = np.stack([cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), (256, 256), interpolation=cv2.INTER_LINEAR) for img in step_data['video'].squeeze()])
-            out_dir = f'vis_depth/{dataset_name}_traj{i_traj:03d}_T{T:03d}'
-            for t in range(T):
-                visualize_RGBD(depth=depth_pred[t], depth_gt=depth_gt[t], rgb=rgb[t], save_file=os.path.join(out_dir, f'{t:03d}.png'))
+            if vis_dep_gen:
+                depth_pred = mid_info['depth_pred'].squeeze(1).cpu().numpy()
+                depth_gt = step_data['depth.ego_view'].squeeze().cpu().numpy()
+                rgb = np.stack([cv2.resize(img, depth_gt.shape[::-1], interpolation=cv2.INTER_LINEAR) for img in step_data['video'].squeeze()])
+                out_dir = f'vis_depth/{dataset_name}_traj{i_traj:03d}_T{T:03d}'
+                for t in range(T):
+                    visualize_RGBD(depth=depth_pred[t], depth_gt=depth_gt[t], rgb=rgb[t], save_file=os.path.join(out_dir, f'{t:03d}.png'))
 
+            # forward prediction
             pred_mano = decode_mano_para_6d(pred_action)
+            true_mano = {k: torch.cat([v[:-1,0], v[-1]], 0) for k, v in ref_data.items() if k in pred_mano}
             '''
-            pred_mano
-            - theta: (T, W, 45)
-            - rot9d: (T, W, 3, 3)
-            - trans: (T, W, 3)
+            pred_mano / true_mano
+            - theta: (L, W, 45)
+            - theta9d: (L, W, 15, 3, 3)
+            - rot: (L, W, 3)
+            - rot9d: (L, W, 3, 3)
+            - trans: (L, W, 3)
             '''
-            dataset_idx, sample_idx = cascaded_dataset.get_dataset_sample_id_by_idx(b)
-            dataset = cascaded_dataset.dataset_list[dataset_idx]
-            storage_data = default_collate_fn([dataset.index_for_vis(sample_idx+_) for _ in range(T)])
-            assert len(np.unique(storage_data['task_name'])) == 1
-            task_name = storage_data['task_name'][0][0]
-            vis_data = dataset.task_example_for_vis(task_name)
-            assert all([x in vis_data['save_video_file'] for x in task_name.split('/')])
-            '''
-            # save original video
-            offline_render(**vis_data)
-            '''
-            vis_data['save_video_file'] = f'_avg'.join(os.path.splitext(vis_data['save_video_file']))
-            '''
-            mano_theta9d = batch_rodrigues(torch.Tensor(storage_data['state.theta']).view(-1,3).cuda()).view(-1,15,3,3)
-            # absolute world hand wrist pose
-            ref_state_rot_world, ref_state_trans_world = get_pose12d_from_camera_to_world(
-                torch.Tensor(storage_data['state.rot'].squeeze(1)).cuda(),
-                torch.Tensor(storage_data['state.trans'].squeeze(1)).cuda(),
-                extrinsic_matrix_sequence[:T]
-            )
-            '''
-            mano_beta = torch.Tensor(storage_data['state.beta']).squeeze(1).cuda()
-            init_rot = torch.Tensor(storage_data['state.rot']).squeeze(1).cuda()
-            init_trans = torch.Tensor(storage_data['state.trans']).squeeze(1).cuda()
+            # MANO pose from absolute cam pose to absolute world pose
             extrinsic_matrix_sequence = torch.Tensor(vis_data['extrinsic_matrix_sequence']).cuda()
-            
-            
-                            
+            true_mano['theta'] = true_mano['theta'].view(-1,45)
+            mask = true_mano['theta'].norm(dim=1) > 0 if task_name.startswith('scene_') else torch.ones(len(true_mano['theta']), device=true_mano['theta'].device, dtype=torch.bool)
+            true_mano['rot9d'], true_mano['trans'] = get_pose12d_from_camera_to_world(
+                true_mano['rot9d'],
+                true_mano['trans'],
+                extrinsic_matrix_sequence[1:]
+            )
+            true_mano['rot'] = batch_rot2aa(true_mano['rot9d'])
             pred_mano_rot9d, pred_mano_trans = [], []
+            # used for relative pose -> absolute cam pose
+            mano_beta = ref_data['state.beta']          # (T, 10)
+            init_rot9d = ref_data['state.rot9d']        # (T, 3, 3)
+            init_trans = ref_data['state.trans']        # (T, 3)
             for t in range(T):
                 # relative pose -> absolute cam pose
                 pred_mano_rot9d_t, pred_mano_trans_t = decode_absolute_pose_from_relative(  # (W, 3, 3), (W, 3)
-                    init_rot[[t]],
+                    init_rot9d[[t]],
                     init_trans[[t]],
                     pred_mano['rot9d'][t], 
                     pred_mano['trans'][t], 
@@ -360,7 +412,6 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
             # rotation sequence smooth: temporal convolution, followed by an orthogonalisation
             indices = (torch.arange(T).unsqueeze(1) - torch.arange(window_size).unsqueeze(0) + (window_size - 1)).flip(1)
             pred_mano_theta9d_smooth, pred_mano_rot9d_smooth, pred_mano_trans_smooth = [], [], []
-            L = T + window_size - 1
             for t in range(L):
                 pred_mano_rot9d_chunk_t = pred_mano_rot9d[indices == t]  # at most (W, 3, 3)
                 pred_mano_trans_chunk_t = pred_mano_trans[indices == t]  # at most (W, 3)
@@ -376,9 +427,12 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 U, S, Vh = torch.linalg.svd(torch.sum(pred_mano_theta9d_chunk_t * weights.view(-1,1,1,1), dim=0))
                 pred_mano_theta9d_smooth.append(U @ Vh)  # (15, 3, 3)
                 pred_mano_trans_smooth.append(torch.sum(pred_mano_trans_chunk_t * weights.view(-1,1), dim=0))  # (3)
-                # print(f'[{t}/{L}]')
-                # print(f'origin: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_chunk_t[0]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_chunk_t[0]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta9d_chunk_t[0]):.6f}')
-                # print(f'smooth: rot:{mse(ref_state_rot_world[t],pred_mano_rot9d_smooth[t]):.6f} | trans:{mse(ref_state_trans_world[t], pred_mano_trans_smooth[t]):.6f} | theta:{mse(mano_theta9d[t],pred_mano_theta9d_smooth[t]):.6f}')
+                '''
+                if t % 10 == 0:
+                    print(f'[{t}/{L}]')
+                    print(f"origin: rot:{mse(true_mano['rot9d'][t],pred_mano_rot9d_chunk_t[0]):.6f} | trans:{mse(true_mano['trans'][t], pred_mano_trans_chunk_t[0]):.6f} | theta:{mse(true_mano['theta9d'][t],pred_mano_theta9d_chunk_t[0]):.6f}")
+                    print(f"smooth: rot:{mse(true_mano['rot9d'][t],pred_mano_rot9d_smooth[t]):.6f} | trans:{mse(true_mano['trans'][t], pred_mano_trans_smooth[t]):.6f} | theta:{mse(true_mano['theta9d'][t],pred_mano_theta9d_smooth[t]):.6f}")
+                '''
             pred_mano_rot9d_smooth = torch.stack(pred_mano_rot9d_smooth).view(L,3,3)                    # (L, 3, 3)
             pred_mano_rot_smooth = batch_rot2aa(pred_mano_rot9d_smooth).view(L,3)                       # (L, 3)
             pred_mano_theta9d_smooth = torch.stack(pred_mano_theta9d_smooth).view(L,15,3,3)             # (L, 15, 3, 3)
@@ -401,37 +455,94 @@ def conduct_visualization(cascaded_dataset, policy, per_vis=-1):
                 side
             )[:2]
             
-            ## calculate trajectory metrics: TODO
-            true_mano = decode_mano_para_6d({k: v for k, v in step_data.items() if k.startswith("action.")})
+            ## calculate trajectory metrics
             true_hand_vertices, true_hand_joints = mano_forward(  # (L, 778, 3), (L, 21, 3)
                 true_mano['theta'], 
-                true_mano['beta'], 
-                true_mano['rot9d'], 
+                mano_beta[0], 
+                true_mano['rot'], 
                 true_mano['trans'], 
                 side
             )[:2]
             batch_avg_metrics = {
-                **calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints),
-                **calculate_mano_parameters_metrics(pred_mano_smooth, true_mano),
+                **calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints, mask),
+                **calculate_mano_parameters_metrics(pred_mano_smooth, true_mano, mask),
             }
-            print(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T} | Metrics: {batch_avg_metrics}")
-            ## visualize: overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts', save_video_file
-            vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
-            vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
-            offline_render(**vis_data)
-            breakpoint()
+            ## update metrics
+            pbar.set_description(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T}")
+            pbar.set_postfix({k: f"{v:.4f}" for k, v in batch_avg_metrics.items()})
+            row = {
+                'Dataset': dataset_name,
+                'Trajectory': i_traj,
+                'Frames': T,
+                **{k: round(v, 4) for k, v in batch_avg_metrics.items()},
+            }
+            writer.writerow(row)
+            metrics_backup.add((dataset_name, i_traj))
+            ## visualize: 
+            if vis_ren_ori:  # save original video
+                offline_render(**vis_data)
+            if vis_ren_gen:  # save generated video: overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts', save_video_file
+                vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
+                vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
+                offline_render(**vis_data)
 
+    # calculate average metrics
+    calculate_average_metrics(metrics_file)
+
+def calculate_average_metrics(
+    metrics_file, 
+    select_columns=['MPJPE', 'MPJPE-PA', 'MPVE', 'MPVE-PA', 'MWTE', 'MRE'], 
+    exclude_datasets=['FPHA'], 
+    precision=3, 
+    exclude_n=4
+):
+    """
+    Compute metrics excluding specified datasets and N largest MPJPE values per dataset
+    Args:
+        df: pandas DataFrame with metrics
+        select_columns: list of metric columns to compute
+        exclude_datasets: list of dataset names to exclude
+        precision: decimal precision for rounding
+        exclude_n: number of largest MPJPE values to exclude per dataset
+    """
+    df = pd.read_csv(metrics_file)
+    
+    # Filter out excluded datasets
+    df_filtered = df[~df['Dataset'].isin(exclude_datasets)]
+    
+    # Calculate metrics per dataset
+    dataset_metrics = df_filtered.groupby('Dataset').apply(
+        lambda x: x.nsmallest(len(x) - exclude_n, 'MPJPE')[select_columns].mean()
+    ).round(precision)
+
+    # Calculate overall average
+    total_metrics = pd.concat([
+        df_filtered[df_filtered['Dataset'] == dataset]
+        .nsmallest(len(df_filtered[df_filtered['Dataset'] == dataset]) - exclude_n, 'MPJPE')[select_columns]
+        for dataset in df_filtered['Dataset'].unique()
+    ]).mean().round(precision)
+    
+    # TODO: Print results as latex table
+    print("\nMetrics per dataset (excluding 4 largest MPJPE per dataset):")
+    print(dataset_metrics)
+    print("\nOverall averages:")
+    for metric, value in total_metrics.items():
+        print(f"{metric}: {value:.{precision}f}")
+
+    return dataset_metrics, total_metrics
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_list", type=str, required=True, help="dataset string split by comma, e.g. 'oakink2,hoi4d'") 
+    parser.add_argument("--dataset_list", type=str, required=True, help="dataset string split by comma") 
     parser.add_argument("--dataset_path", type=str, default="/mnt/vepfs/zbh/MHMP/datasets/")
     parser.add_argument("--data_config", type=str, default="hand_motion", choices=list(DATA_CONFIG_MAP.keys()),help="data config name",)
     parser.add_argument("--split_portion", type=float, default=1.0)
-    parser.add_argument("--batch_size", type=int, default=8192)
-    parser.add_argument("--pretrain_ckpt", type=str, default=None, help="[Optional] Path to the model checkpoint directory, this will disable client server mode.",)
+    parser.add_argument("--pretrain_ckpt", type=str, default=None, help="Path to the model checkpoint",)
     parser.add_argument("--debug", type=int, default=0)
-    parser.add_argument("--mode", type=str, default='vis', choices=['test', 'vis'], help="mode for testing")
+    ### visualize options
+    parser.add_argument("--vis_dep_gen", action='store_true', default=False)
+    parser.add_argument("--vis_ren_ori", action='store_true', default=False)
+    parser.add_argument("--vis_ren_gen", action='store_true', default=False)
     args = parser.parse_args()
     # policy
     data_config = DATA_CONFIG_MAP[args.data_config]
@@ -454,12 +565,5 @@ if __name__ == "__main__":
         test=True,
         debug=args.debug,
     )
-    '''
-    for i in np.array(cascaded_dataset.lengths) + 2:
-        sample = cascaded_dataset[i]
-    breakpoint()
-    '''
-    if 'vis' in args.mode:  # conduct testing for visualization
-        conduct_visualization(cascaded_dataset, policy)
-    else:  # conduct testing for reporting metrics
-        conduct_testing(cascaded_dataset, policy, batch_size=args.batch_size)
+    # evaluate
+    test_and_visualize(cascaded_dataset, policy, args.vis_dep_gen, args.vis_ren_ori, args.vis_ren_gen)

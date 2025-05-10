@@ -35,6 +35,7 @@ class Config:
     # customize
     multimodal: str = "tv"
     depth_model_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
+    depth_mode: str = "abs"
     dataset_list: str = ""
     exp_name: str = "runs"
     debug: int = 0
@@ -148,6 +149,7 @@ def main(config: Config):
     # customize
     model_config.update({
         "depth_model_path": config.depth_model_path,
+        "depth_mode": config.depth_mode,
         "multimodal": config.multimodal,
     })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")

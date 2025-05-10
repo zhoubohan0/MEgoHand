@@ -5,7 +5,16 @@ import torch.nn.functional as F
 import torch.jit as jit
 import os, cv2
 import matplotlib.pyplot as plt
+from contextlib import contextmanager
+import time
 
+@contextmanager
+def timer(name="Code block"):
+    start = time.perf_counter()
+    yield
+    end = time.perf_counter()
+    print(f"{name} took {end - start:.4f} seconds")
+    
 class RunningMeanStdMinMax(jit.ScriptModule):
     def __init__(self, shape=(), device='cuda'):
         super(RunningMeanStdMinMax, self).__init__()
@@ -119,7 +128,9 @@ def minmaxscale(x: torch.Tensor) -> torch.Tensor:
     """
     MinMax Scale
     """
-    return (x - x.min()) / (x.max() - x.min())
+    x_min = x.amin(dim=(-2, -1), keepdim=True)
+    x_max = x.amax(dim=(-2, -1), keepdim=True)
+    return 2 * (x - x_min) / (x_max - x_min) - 1
 
 # depth visualization
 def depth2color(depth: np.ndarray, cmap='Spectral_r') -> np.ndarray:
@@ -167,6 +178,7 @@ def visualize_RGBD(
         grid_size = 10
         num_plot = 2 if rgb is None else 3
         fig, ax = plt.subplots(1, num_plot, figsize=(grid_size * num_plot, grid_size))
+        # rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB) if rgb is not None else None
         ax[0].imshow(rgb)
         ax[0].set_title(RGB_tag)
         ax[0].axis('off')
@@ -174,11 +186,10 @@ def visualize_RGBD(
         ax[1].set_title(tag)
         ax[1].axis('off')
         plt.colorbar(ax[1].imshow(depth, cmap=cmap), ax=ax[1], shrink=0.5)
-        if rgb is not None:
-            ax[2].imshow(depth_gt, cmap=cmap)
-            ax[2].set_title(depth_gt_tag)
-            ax[2].axis('off')
-            plt.colorbar(ax[2].imshow(depth_gt, cmap=cmap), ax=ax[2], shrink=0.5)
+        ax[2].imshow(depth_gt, cmap=cmap)
+        ax[2].set_title(depth_gt_tag)
+        ax[2].axis('off')
+        plt.colorbar(ax[2].imshow(depth_gt, cmap=cmap), ax=ax[2], shrink=0.5)
         plt.savefig(save_file, bbox_inches='tight')
         plt.close()
 

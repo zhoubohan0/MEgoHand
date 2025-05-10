@@ -1,6 +1,6 @@
 Run locally
 ```bash
-bash bash/train.sh -dataset_path /media/ps/zhan/DATASET/ -depth_model_path "" -multimodal "tv" -exp_name ZY_RGB_fpha -lora_rank 0 -tune_llm 0 -tune_visual 0 -device 0 -dataset_list fpha -debug 1 -batch_size 1 
+bash bash/train.sh -dataset_path /media/ps/zhan/DATASET/ -depth_model_path "" -depth_mode "abs" -multimodal "tv" -exp_name ZY_RGB_fpha -lora_rank 0 -tune_llm 0 -tune_visual 0 -device 0 -dataset_list fpha -debug 1 -batch_size 1 
 ```
 
 Environment

@@ -127,6 +127,7 @@ class GR00T_N1(PreTrainedModel):
         self.local_model_path = local_model_path
         # customize
         config.backbone_cfg['depth_model_path'] = config.depth_model_path
+        config.backbone_cfg['depth_mode'] = config.depth_mode
         config.backbone_cfg['multimodal'] = config.multimodal
         self.backbone = EagleBackbone(**config.backbone_cfg)
         self.action_head = FlowmatchingActionHead(FlowmatchingActionHeadConfig(**config.action_head_cfg))

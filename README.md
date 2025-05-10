@@ -91,16 +91,16 @@ test_dataset = load_cascaded_dataset(
 bash bash/train.sh -batch_size 112 -depth_model_path "" -multimodal "tv" -exp_name TI_l1_6 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
 # MHMP+DA
-bash bash/train.sh -batch_size 80 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "tv" -exp_name TID_l1_6_DA -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 80 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -depth_mode "abs" -multimodal "tv" -exp_name TID_l1_6_DA -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
 # MHMP+UD
-bash bash/train.sh -batch_size 64 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/unidepth/" -multimodal "tv" -exp_name TID_l1_6_UD -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 60 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/unidepth/" -depth_mode "abs" -multimodal "tv" -exp_name TID_l1_6_UD -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
 # MHMP-T
-bash bash/train.sh -batch_size 256 -depth_model_path "" -multimodal "t" -exp_name T_l1_6 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 1700 -depth_model_path "" -multimodal "tv" -exp_name T_l1_6 -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 
 # MHMP-V
-bash bash/train.sh -batch_size 90 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/" -multimodal "v" -exp_name ID_l1_6_DA -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
+bash bash/train.sh -batch_size 70 -depth_model_path "/mnt/vepfs/zbh/backup/pretrain/unidepth/" -depth_mode "abs" -multimodal "v" -exp_name ID_l1_6_UD -lora_rank 0 -tune_llm 0 -device "0,1,2,3,4,5,6,7" -dataset_list fpha,h2o,hoi4d,hot3d,taco,oakink2
 ```
 
 Visualize logs as below. The checkpoint will be saved in $exp_dir/*
@@ -112,7 +112,6 @@ tensorboard --logdir $exp_dir/*
 
 ## Testing and Visualization
 ```bash
-export ckpt="/mnt/vepfs/zbh/MHMP/logs/RGBD_l1_7_genD/checkpoint-35000"
-bash bash/test.sh -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2 -mode vis -split_portion 0.95 -pretrain_ckpt ${ckpt}
-bash bash/test.sh -dataset_list arctic,fpha,h2o,hoi4d,hot3d,taco,oakink2 -mode test -split_portion 0.95 -batch_size 2048 -pretrain_ckpt ${ckpt}
+export ckpt="logs/TID_l1_6_UD/checkpoint-50000"
+bash bash/test.sh -dataset_list arctic, -split_portion 0.0 -pretrain_ckpt ${ckpt}
 ```

@@ -127,7 +127,7 @@ class MHMPolicy(BasePolicy):
         """
         return self._modality_transform.unapply(action)
 
-    def get_action(self, observations: Dict[str, Any], return_mid_info=False) -> Dict[str, Any]:
+    def get_action(self, observations: Dict[str, Any], return_mid_info=False, max_trunk=200) -> Dict[str, Any]:
         """
         Make a prediction with the model.
         Args:
@@ -205,7 +205,16 @@ class MHMPolicy(BasePolicy):
         '''
         # add 'state_mask', image-text 'input_ids' and all one 'attention_mask'
         normalized_input = self.apply_transforms(observations)
-        normalized_action, mid_info = self._get_action_from_normalized_input({k: v.cuda() for k, v in normalized_input.items()})
+        normalized_action, mid_info = None, dict()
+        for i in range(0, len(normalized_input['state']), max_trunk):
+            normalized_action_trunk, mid_info_trunk = self._get_action_from_normalized_input({k: v[i:i+max_trunk].cuda() for k, v in normalized_input.items()})
+            if i == 0:
+                normalized_action = normalized_action_trunk
+                mid_info = mid_info_trunk
+            else:
+                normalized_action = torch.cat([normalized_action, normalized_action_trunk], dim=0)
+                for k, v in mid_info_trunk.items():
+                    mid_info[k] = torch.cat([mid_info[k], v], dim=0)
         unnormalized_action = self._get_unnormalized_action(normalized_action)
         if not is_batch:
             unnormalized_action = squeeze_dict_values(unnormalized_action)

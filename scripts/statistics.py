@@ -30,6 +30,7 @@ class Config:
     # customize
     multimodal: str = "tv"
     depth_model_path: str = "/mnt/vepfs/zbh/backup/pretrain/depth_anything_v2/"
+    depth_mode: str = "abs"
     dataset_list: str = ""
     exp_name: str = "runs"
 
