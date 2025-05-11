@@ -240,19 +240,6 @@ def test_and_visualize(
     cascaded_dataset, policy,
     vis_dep_gen=False, vis_ren_ori=False, vis_ren_gen=False,
 ):
-    class RefDataset(Dataset):
-        def __init__(self, dataset, sample_idx, length):
-            self.dataset = dataset
-            self.sample_idx = sample_idx
-            self.length = length
-            
-        def __len__(self):
-            return self.length
-            
-        def __getitem__(self, idx):
-            sample = self.dataset.__get_ref_item__(self.sample_idx + idx, device='cpu')
-            return {k: v.cuda() for k, v in sample.items()}
-    
     def truncate_vis_data(vis_data, trunk_len):
         vis_data_copy = vis_data.copy()
         for k in ['image_filenames', 'cam_left_hand_verts', 'cam_right_hand_verts', 'world_left_hand_verts', 'world_right_hand_verts', 'extrinsic_matrix_sequence']:
@@ -311,13 +298,27 @@ def test_and_visualize(
                 )
                 step_data = next(iter(step_loader))
             '''
-            step_data = default_collate_fn([cascaded_dataset[_] for _ in range(b,e)])
+            # step_data = default_collate_fn([cascaded_dataset[_] for _ in range(b,e)])
+            step_data = cascaded_dataset[slice(b, e)]
 
             # 2. ref_data: used for initial MANO parameters and GT MANO parameters
             dataset_idx, sample_idx = cascaded_dataset.get_dataset_sample_id_by_idx(b)
             dataset = cascaded_dataset.dataset_list[dataset_idx]
             '''
             # slower
+            class RefDataset(Dataset):
+                def __init__(self, dataset, sample_idx, length):
+                    self.dataset = dataset
+                    self.sample_idx = sample_idx
+                    self.length = length
+                    
+                def __len__(self):
+                    return self.length
+                    
+                def __getitem__(self, idx):
+                    sample = self.dataset.__get_ref_item__(self.sample_idx + idx, device='cpu')
+                    return {k: v.cuda() for k, v in sample.items()}
+            
             with timer('ref_data_loader'):
                 ref_loader = DataLoader(
                     RefDataset(dataset, sample_idx, T),
@@ -328,7 +329,8 @@ def test_and_visualize(
                 )
                 ref_data = next(iter(ref_loader))
             '''
-            ref_data = default_collate_fn([dataset.__get_ref_item__(sample_idx+_) for _ in range(T)])
+            # ref_data = default_collate_fn([dataset.__get_ref_item__(sample_idx+_) for _ in range(T)])
+            ref_data = dataset.__get_ref_item__(slice(sample_idx, sample_idx+T))
 
             assert len(np.unique(ref_data['task_name'])) == 1
             # 3. vis_data: occupation for visualization

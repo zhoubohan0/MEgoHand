@@ -48,9 +48,11 @@ def calculate_average_metrics(
 if __name__ == "__main__":
     metrics_file_list = [
         '/mnt/vepfs/zbh/MHMP/logs/ID_l1_6_UD/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/eval_metrics.csv',
+        # '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/eval_metrics.csv',
+        # '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/eval_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_DA/eval_metrics.csv',
         '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD/eval_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_rel/eval_metrics.csv',
     ]
     for metrics_file in metrics_file_list:
         print(f'-' * 20 + f'{metrics_file}' + '-' * 20)

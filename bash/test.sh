@@ -38,7 +38,7 @@ done
 
 echo "dataset_path: $dataset_path, testset: $testset, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt"
 
-CUDA_VISIBLE_DEVICES=$device python -m pdb -m scripts.test \
+CUDA_VISIBLE_DEVICES=$device python -m scripts.test \
   --dataset_path $dataset_path \
   --testset $testset \
   --debug $debug \

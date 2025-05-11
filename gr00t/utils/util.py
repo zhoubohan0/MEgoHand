@@ -58,7 +58,9 @@ def resize(x, size=(256,256)):
     '''
     (B, H, W) -> (B, 1, H', W')
     '''
-    return F.interpolate(x[:, None], size, mode="bilinear", align_corners=True)
+    if len(x.shape) == 3:
+        x = x[:, None]  # (B, H, W) -> (B, 1, H, W)
+    return F.interpolate(x, size, mode="bilinear", align_corners=True)
 
 def default_collate_fn(features: list[dict], **kwargs) -> dict:
     '''
