@@ -22,7 +22,6 @@ from einops import repeat
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset, Subset
 from multiprocessing.pool import ThreadPool
-import pandas as pd
 
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
@@ -274,9 +273,11 @@ def test_and_visualize(
         with open(metrics_file, 'r') as f:
             reader = csv.DictReader(f)
             metrics_backup = {(row['Dataset'], int(row['Trajectory'])) for row in reader}
-        writer = csv.DictWriter(open(metrics_file, 'a', newline=''), fieldnames=fieldnames)
+        writer_file = open(metrics_file, 'a', newline='')
+        writer = csv.DictWriter(writer_file, fieldnames=fieldnames)
     else:
-        writer = csv.DictWriter(open(metrics_file, 'w', newline=''), fieldnames=fieldnames)
+        writer_file = open(metrics_file, 'w', newline='')
+        writer = csv.DictWriter(writer_file, fieldnames=fieldnames)
         writer.writeheader()
     
     window_size = cascaded_dataset.dataset_list[0].data_storage.window_size
@@ -477,6 +478,7 @@ def test_and_visualize(
                 **{k: round(v, 4) for k, v in batch_avg_metrics.items()},
             }
             writer.writerow(row)
+            writer_file.flush()
             metrics_backup.add((dataset_name, i_traj))
             ## visualize: 
             if vis_ren_ori:  # save original video
@@ -486,50 +488,7 @@ def test_and_visualize(
                 vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
                 offline_render(**vis_data)
 
-    # calculate average metrics
-    calculate_average_metrics(metrics_file)
-
-def calculate_average_metrics(
-    metrics_file, 
-    select_columns=['MPJPE', 'MPJPE-PA', 'MPVE', 'MPVE-PA', 'MWTE', 'MRE'], 
-    exclude_datasets=['FPHA'], 
-    precision=3, 
-    exclude_n=4
-):
-    """
-    Compute metrics excluding specified datasets and N largest MPJPE values per dataset
-    Args:
-        df: pandas DataFrame with metrics
-        select_columns: list of metric columns to compute
-        exclude_datasets: list of dataset names to exclude
-        precision: decimal precision for rounding
-        exclude_n: number of largest MPJPE values to exclude per dataset
-    """
-    df = pd.read_csv(metrics_file)
-    
-    # Filter out excluded datasets
-    df_filtered = df[~df['Dataset'].isin(exclude_datasets)]
-    
-    # Calculate metrics per dataset
-    dataset_metrics = df_filtered.groupby('Dataset').apply(
-        lambda x: x.nsmallest(len(x) - exclude_n, 'MPJPE')[select_columns].mean()
-    ).round(precision)
-
-    # Calculate overall average
-    total_metrics = pd.concat([
-        df_filtered[df_filtered['Dataset'] == dataset]
-        .nsmallest(len(df_filtered[df_filtered['Dataset'] == dataset]) - exclude_n, 'MPJPE')[select_columns]
-        for dataset in df_filtered['Dataset'].unique()
-    ]).mean().round(precision)
-    
-    # TODO: Print results as latex table
-    print("\nMetrics per dataset (excluding 4 largest MPJPE per dataset):")
-    print(dataset_metrics)
-    print("\nOverall averages:")
-    for metric, value in total_metrics.items():
-        print(f"{metric}: {value:.{precision}f}")
-
-    return dataset_metrics, total_metrics
+    writer_file.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
