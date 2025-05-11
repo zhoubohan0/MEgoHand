@@ -264,7 +264,7 @@ def test_and_visualize(
         return vis_data_copy
     
     # record metrics
-    metrics_file = os.path.join(os.path.dirname(args.pretrain_ckpt), 'eval_metrics.csv')  # TODO
+    metrics_file = os.path.join(os.path.dirname(args.pretrain_ckpt), f'{cascaded_dataset.testset}_metrics.csv')
     fieldnames = ['Dataset', 'Trajectory', 'Frames', 'MPJPE', 'MPJPE-PA', 'MPVE', 'MPVE-PA', 'MWTE', 'MRE']
 
     # Read existing entries into a set for quick lookup
@@ -492,10 +492,9 @@ def test_and_visualize(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_list", type=str, required=True, help="dataset string split by comma") 
+    parser.add_argument("--testset", type=str, default="eval", choices=["eval", "test"], help="testset name")
     parser.add_argument("--dataset_path", type=str, default="/mnt/vepfs/zbh/MHMP/datasets/")
     parser.add_argument("--data_config", type=str, default="hand_motion", choices=list(DATA_CONFIG_MAP.keys()),help="data config name",)
-    parser.add_argument("--split_portion", type=float, default=1.0)
     parser.add_argument("--pretrain_ckpt", type=str, default=None, help="Path to the model checkpoint",)
     parser.add_argument("--debug", type=int, default=0)
     ### visualize options
@@ -503,6 +502,17 @@ if __name__ == "__main__":
     parser.add_argument("--vis_ren_ori", action='store_true', default=False)
     parser.add_argument("--vis_ren_gen", action='store_true', default=False)
     args = parser.parse_args()
+    
+    # choose testset
+    if args.testset == "eval":
+        dataset_list="fpha,h2o,hoi4d,hot3d,taco,oakink2"
+        split_portion=0.99
+    elif args.testset == "test":
+        dataset_list="arctic"
+        split_portion=0.0
+    else:
+        raise ValueError(f"Invalid testset: {args.testset}")
+    
     # policy
     data_config = DATA_CONFIG_MAP[args.data_config]
     modality_config = data_config.modality_config()
@@ -517,12 +527,14 @@ if __name__ == "__main__":
     data_storage_kwargs = dict(window_size=data_config.action_horizon, side=data_config.side, is_render_depth=data_config.is_render_depth)
     cascaded_dataset = load_cascaded_dataset(
         dataset_path=args.dataset_path,
-        dataset_list=args.dataset_list.split(','),
-        split_portion=args.split_portion,
+        dataset_list=dataset_list.split(','),
+        split_portion=split_portion,
         data_config=data_config,
         data_storage_kwargs=data_storage_kwargs,
         test=True,
         debug=args.debug,
     )
+    cascaded_dataset.testset = args.testset
+    
     # evaluate
     test_and_visualize(cascaded_dataset, policy, args.vis_dep_gen, args.vis_ren_ori, args.vis_ren_gen)

@@ -2,8 +2,7 @@
 
 pretrain_ckpt=""
 dataset_path="/mnt/vepfs/zbh/MHMP/datasets/"
-dataset_list=""  # Initialize as empty array, separate by comma
-split_portion=0.0
+testset="eval"
 debug=0
 device="0"
 
@@ -14,14 +13,8 @@ while [[ $# -gt 0 ]]; do
       dataset_path="$2"
       shift 2
       ;;
-    -dataset_list)
-      # Split the comma-separated list into an array
-      # IFS=',' read -ra dataset_list <<< "$2"
-      dataset_list="$2"
-      shift 2
-      ;;
-    -split_portion)
-      split_portion="$2"
+    -testset)
+      testset="$2"
       shift 2
       ;;
     -pretrain_ckpt)
@@ -43,11 +36,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "dataset_path: $dataset_path, dataset_list: $dataset_list, split_portion: $split_portion, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt"
+echo "dataset_path: $dataset_path, testset: $testset, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt"
 
 CUDA_VISIBLE_DEVICES=$device python -m pdb -m scripts.test \
   --dataset_path $dataset_path \
-  --dataset_list $dataset_list \
-  --split_portion $split_portion \
+  --testset $testset \
   --debug $debug \
   --pretrain_ckpt $pretrain_ckpt \
