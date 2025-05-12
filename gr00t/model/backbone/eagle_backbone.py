@@ -279,7 +279,6 @@ class EagleBackbone(nn.Module):
         # Set frozen module to eval
         self.set_frozen_modules_to_eval_mode()
         if self.incorporate_depth:
-            depth_true = vl_input['depth.ego_view'].squeeze(1).detach()    # (B, 1, H, W)
             # depth estimation
             depth_pred = self.depth_model.forward_depth_model(vl_input["video.depthmodel"].squeeze(1)).detach() # (B, 1, H, W)
             vlm_output["depth_pred"] = depth_pred  # for test visualization
@@ -309,6 +308,8 @@ class EagleBackbone(nn.Module):
             vlm_output["depth_loss"] = l1(depth_pred[depth_mask], depth_true[depth_mask])
             '''
             depth_feature = self.depth_encoder(depth_pred)
+            # true depth supervision
+            depth_true = vl_input['depth.ego_view'].squeeze(1).detach()    # (B, 1, H, W)
             depth_feature_true = self.depth_encoder(depth_true)
             # vlm_output["depth_loss"] = self.unidepth_loss(depth_pred, depth_true)
             vlm_output["depth_feature_loss"] = self.emb_loss(depth_feature, depth_feature_true)  # mse

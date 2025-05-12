@@ -37,7 +37,7 @@ def calculate_average_metrics(
     ]).mean().round(precision)
     
     # TODO: Print results as latex table
-    print("\nMetrics per dataset (excluding 4 largest MPJPE per dataset):")
+    breakpoint()
     print(dataset_metrics)
     print("\nOverall averages:")
     for metric, value in total_metrics.items():
@@ -46,15 +46,23 @@ def calculate_average_metrics(
     return dataset_metrics, total_metrics
 
 if __name__ == "__main__":
-    metrics_file_list = [
+    eval_metrics_list = [
         '/mnt/vepfs/zbh/MHMP/logs/ID_l1_6_UD/eval_metrics.csv',
-        # '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/eval_metrics.csv',
-        # '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/eval_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/eval_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/eval_metrics.csv',
         '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_DA/eval_metrics.csv',
         '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD/eval_metrics.csv',
         '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_rel/eval_metrics.csv',
     ]
-    for metrics_file in metrics_file_list:
+    test_metrics_list = [
+        '/mnt/vepfs/zbh/MHMP/logs/ID_l1_6_UD/test_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/test_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/test_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_DA/test_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD/test_metrics.csv',
+        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_rel/test_metrics.csv',
+    ]
+    for metrics_file in test_metrics_list:
         print(f'-' * 20 + f'{metrics_file}' + '-' * 20)
         calculate_average_metrics(metrics_file, exclude_datasets=['FPHA'])
         print('\n')
