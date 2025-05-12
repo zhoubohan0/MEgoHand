@@ -13,14 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os, json
+import os, json, sys
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-
 import torch
 import tyro
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from mhmp_vis.dataset_loader import *
 

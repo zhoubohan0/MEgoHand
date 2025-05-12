@@ -30,6 +30,9 @@ export task="train_aria/clip-002832"
 export dataset=oakink2
 export task="scene_04__A008/seq__ff070467cd91f735acab__2023-04-23-11-28-29"
 
+export dataset=holo
+export task="R0027-12-GoPro"
+
 python -m pdb -m dataset_visualizer.general_offline_visualizer -d ${dataset} -t ${task}
 ```
 
