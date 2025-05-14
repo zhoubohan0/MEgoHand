@@ -238,7 +238,7 @@ def calculate_mano_parameters_metrics(pred_mano, true_mano, mask):
 
 def test_and_visualize(
     cascaded_dataset, policy,
-    vis_dep_gen=False, vis_ren_ori=False, vis_ren_gen=False,
+    vis_dep_gen=False, vis_ren_ori=False, vis_ren_gen=False, vis_src_file=None,
 ):
     def truncate_vis_data(vis_data, trunk_len):
         vis_data_copy = vis_data.copy()
@@ -267,6 +267,9 @@ def test_and_visualize(
         writer = csv.DictWriter(writer_file, fieldnames=fieldnames)
         writer.writeheader()
     
+    if vis_src_file is not None:
+        with open(vis_src_file, 'r') as f:
+            vis_target_list = [line.strip().split(',') for line in f.readlines()]
     window_size = cascaded_dataset.dataset_list[0].data_storage.window_size
     side = cascaded_dataset.dataset_list[0].data_storage.side
     # get all trajectories index in cascaded_dataset
@@ -278,8 +281,12 @@ def test_and_visualize(
     for dataset_name, valid_trajectory_range in all_valid_trajectory_range.items():
         pbar = tqdm(range(len(valid_trajectory_range)), desc=f"Visualizing {dataset_name}", unit="trajectory", leave=False, dynamic_ncols=True, position=0)
         for i_traj in pbar:
-            if (dataset_name, i_traj) in metrics_backup:
-                continue
+            if vis_ren_gen:
+                if (dataset_name, str(i_traj)) not in vis_target_list:  # choose trajectories to visualize
+                    continue
+            else:
+                if (dataset_name, i_traj) in metrics_backup:  # skip already calculated trajectories
+                    continue
             b, e = valid_trajectory_range[i_traj]
             T = int(e - b)
             L = T + window_size - 1
@@ -458,36 +465,36 @@ def test_and_visualize(
                 side
             )[:2]
             
-            ## calculate trajectory metrics
-            true_hand_vertices, true_hand_joints = mano_forward(  # (L, 778, 3), (L, 21, 3)
-                true_mano['theta'], 
-                mano_beta[0], 
-                true_mano['rot'], 
-                true_mano['trans'], 
-                side
-            )[:2]
-            batch_avg_metrics = {
-                **calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints, mask),
-                **calculate_mano_parameters_metrics(pred_mano_smooth, true_mano, mask),
-            }
-            ## update metrics
-            pbar.set_description(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T}")
-            pbar.set_postfix({k: f"{v:.4f}" for k, v in batch_avg_metrics.items()})
-            row = {
-                'Dataset': dataset_name,
-                'Trajectory': i_traj,
-                'Frames': T,
-                **{k: round(v, 4) for k, v in batch_avg_metrics.items()},
-            }
-            writer.writerow(row)
-            writer_file.flush()
-            metrics_backup.add((dataset_name, i_traj))
-            ## visualize: 
-            if vis_ren_ori:  # save original video
-                offline_render(**vis_data)
-            if vis_ren_gen:  # save generated video: overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts', save_video_file
+            if not vis_ren_gen:  ## calculate trajectory metrics
+                true_hand_vertices, true_hand_joints = mano_forward(  # (L, 778, 3), (L, 21, 3)
+                    true_mano['theta'], 
+                    mano_beta[0], 
+                    true_mano['rot'], 
+                    true_mano['trans'], 
+                    side
+                )[:2]
+                batch_avg_metrics = {
+                    **calculate_mano_outputs_metrics(pred_hand_vertices, pred_hand_joints, true_hand_vertices, true_hand_joints, mask),
+                    **calculate_mano_parameters_metrics(pred_mano_smooth, true_mano, mask),
+                }
+                ## update metrics
+                pbar.set_description(f"Dataset: {dataset_name} | Trajectory: {i_traj} | Frames: {T}")
+                pbar.set_postfix({k: f"{v:.4f}" for k, v in batch_avg_metrics.items()})
+                row = {
+                    'Dataset': dataset_name,
+                    'Trajectory': i_traj,
+                    'Frames': T,
+                    **{k: round(v, 4) for k, v in batch_avg_metrics.items()},
+                }
+                writer.writerow(row)
+                writer_file.flush()
+                metrics_backup.add((dataset_name, i_traj))
+            else: ## visualize: 
+                if vis_ren_ori:  # save original video
+                    offline_render(**vis_data)
+                # save generated video: overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts', save_video_file
                 vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
-                vis_data['save_video_file'] = f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))
+                vis_data['save_video_file'] = f'_{isub}'.join(os.path.splitext(f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))))
                 offline_render(**vis_data)
 
     writer_file.close()
@@ -502,7 +509,8 @@ if __name__ == "__main__":
     ### visualize options
     parser.add_argument("--vis_dep_gen", action='store_true', default=False)
     parser.add_argument("--vis_ren_ori", action='store_true', default=False)
-    parser.add_argument("--vis_ren_gen", action='store_true', default=False)
+    parser.add_argument("--vis_ren_gen", type=int, default=0)
+    parser.add_argument("--vis_src_file", type=str, default=None)
     args = parser.parse_args()
     
     # choose testset
@@ -539,4 +547,4 @@ if __name__ == "__main__":
     cascaded_dataset.testset = args.testset
     
     # evaluate
-    test_and_visualize(cascaded_dataset, policy, args.vis_dep_gen, args.vis_ren_ori, args.vis_ren_gen)
+    test_and_visualize(cascaded_dataset, policy, args.vis_dep_gen, args.vis_ren_ori, args.vis_ren_gen, args.vis_src_file)

@@ -5,6 +5,7 @@ dataset_path="/mnt/vepfs/zbh/MHMP/datasets/"
 testset="eval"
 debug=0
 device="0"
+vis_ren_gen=0
 
 while [[ $# -gt 0 ]]; do
   key="$1"
@@ -29,6 +30,10 @@ while [[ $# -gt 0 ]]; do
       device="$2"
       shift 2
       ;;
+    -vis_ren_gen)
+      vis_ren_gen="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $key"
       exit 1
@@ -36,10 +41,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "dataset_path: $dataset_path, testset: $testset, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt"
+echo "dataset_path: $dataset_path, testset: $testset, debug: $debug, device: $device, pretrain_ckpt: $pretrain_ckpt, vis_ren_gen: $vis_ren_gen"
 
 CUDA_VISIBLE_DEVICES=$device python -m scripts.test \
   --dataset_path $dataset_path \
   --testset $testset \
   --debug $debug \
   --pretrain_ckpt $pretrain_ckpt \
+  --vis_ren_gen $vis_ren_gen #\
+  # --vis_ren_ori 
