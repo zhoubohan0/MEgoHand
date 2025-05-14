@@ -65,7 +65,12 @@ get_visualization_sequence('/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_norealdep/test_
 get_visualization_sequence('/mnt/vepfs/zbh/MHMP/logs/T_l1_6/eval_metrics.csv',4)
 get_visualization_sequence('/mnt/vepfs/zbh/MHMP/logs/T_l1_6/test_metrics.csv',10)
 breakpoint()
+
+get_visualization_sequence('/home/zbh/Desktop/zbh/hand-motion-pretraining/MHMP/logs/TID_l1_6_UD_norealdep/test_metrics.csv',20)
+get_visualization_sequence('/home/zbh/Desktop/zbh/hand-motion-pretraining/MHMP/logs/T_l1_6/test_metrics.csv',20)
+breakpoint()
 '''
+
 
 if __name__ == "__main__":
     base_dir = '/mnt/vepfs/zbh/MHMP/logs'

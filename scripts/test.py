@@ -547,8 +547,8 @@ if __name__ == "__main__":
         dataset_list="fpha,h2o,hoi4d,hot3d,taco,oakink2"
         split_portion=0.99
     elif args.testset == "test":
-        dataset_list="arctic"
-        # dataset_list="Holo"
+        # dataset_list="arctic"
+        dataset_list="Holo"
         split_portion=0.0
     else:
         raise ValueError(f"Invalid testset: {args.testset}")
