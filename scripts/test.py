@@ -16,13 +16,13 @@
 import argparse
 import warnings
 import numpy as np
-import cv2, csv
+import cv2, csv, os, sys
 import torch
 from einops import repeat
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset, Subset
 from multiprocessing.pool import ThreadPool
-
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.model.policy import MHMPolicy
 from gr00t.utils.util import default_collate_fn, mse, glance_dict, visualize_RGBD, resize, timer
@@ -518,7 +518,8 @@ if __name__ == "__main__":
         dataset_list="fpha,h2o,hoi4d,hot3d,taco,oakink2"
         split_portion=0.99
     elif args.testset == "test":
-        dataset_list="arctic"
+        # dataset_list="arctic"
+        dataset_list="Holo"
         split_portion=0.0
     else:
         raise ValueError(f"Invalid testset: {args.testset}")
