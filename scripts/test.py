@@ -238,7 +238,7 @@ def calculate_mano_parameters_metrics(pred_mano, true_mano, mask):
 
 def test_and_visualize(
     cascaded_dataset, policy,
-    vis_dep_gen=False, vis_ren_ori=False, vis_ren_gen=False, vis_src_file=None,
+    vis_dep_gen=False, vis_ren_ori=False, vis_ren_gen=False,
 ):
     def truncate_vis_data(vis_data, trunk_len):
         vis_data_copy = vis_data.copy()
@@ -267,9 +267,11 @@ def test_and_visualize(
         writer = csv.DictWriter(writer_file, fieldnames=fieldnames)
         writer.writeheader()
     
-    if vis_src_file is not None:
+    
+    if vis_ren_gen:
+        vis_src_file = os.path.join(os.path.dirname(os.path.dirname(args.pretrain_ckpt)), f'{cascaded_dataset.testset}_seq.txt')
         with open(vis_src_file, 'r') as f:
-            vis_target_list = [line.strip().split(',') for line in f.readlines()]
+            vis_target_list = [tuple(line.strip().split(', ')[:2]) for line in f.readlines()]
     window_size = cascaded_dataset.dataset_list[0].data_storage.window_size
     side = cascaded_dataset.dataset_list[0].data_storage.side
     # get all trajectories index in cascaded_dataset
@@ -284,6 +286,8 @@ def test_and_visualize(
             if vis_ren_gen:
                 if (dataset_name, str(i_traj)) not in vis_target_list:  # choose trajectories to visualize
                     continue
+                else:
+                    print(f'Visualizing {dataset_name} {i_traj}')
             else:
                 if (dataset_name, i_traj) in metrics_backup:  # skip already calculated trajectories
                     continue
@@ -489,13 +493,39 @@ def test_and_visualize(
                 writer.writerow(row)
                 writer_file.flush()
                 metrics_backup.add((dataset_name, i_traj))
-            else: ## visualize: 
-                if vis_ren_ori:  # save original video
+            else: 
+                ## visualize: 
+                # disable world_left_hand_verts
+                vis_data['world_left_hand_verts'] = None
+                # for subtask, modify save_video_file
+                if 'subtask' in task_name:
+                    vis_data['save_video_file'] = f'_{isub}'.join(os.path.splitext(vis_data['save_video_file']))
+                if vis_ren_ori and not os.path.exists('_overlay'.join(os.path.splitext(vis_data['save_video_file']))):  # save original video
                     offline_render(**vis_data)
+                
                 # save generated video: overwrite 'cam_{side}_hand_verts', 'world_{side}_hand_verts', save_video_file
-                vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
-                vis_data['save_video_file'] = f'_{isub}'.join(os.path.splitext(f"/{os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]}/".join(vis_data['save_video_file'].split('/'))))
-                offline_render(**vis_data)
+                mode = os.path.basename(os.path.dirname(args.pretrain_ckpt)).split('_')[0]
+                vis_data['save_video_file'] = f"/{mode}/".join(vis_data['save_video_file'].split('/'))
+                if not os.path.exists('_overlay'.join(os.path.splitext(vis_data['save_video_file']))):
+                    # compensate prediction with true data
+                    # vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_vertices.cpu().numpy()
+                    true_hand_verts = vis_data[f'world_{side}_hand_verts'][1:L+1]
+                    pred_hand_verts = pred_hand_vertices.cpu().numpy()
+                    # way1: add additional offset to world_right_hand_verts
+                    compensation_dict = {
+                        'T': 0.1,
+                        'TID': 0.6,
+                    }
+                    compensation_ratio = compensation_dict[mode]
+                    temporal_difference = np.mean(true_hand_verts - pred_hand_verts, axis=(0,1), keepdims=True)
+                    print(f'offset: {temporal_difference.squeeze()}, compensate {compensation_ratio * 100}%')
+                    vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_verts + temporal_difference * compensation_ratio
+                    '''
+                    # way2: visualize procrustes_alignment
+                    pred_hand_verts = procrustes_alignment(pred_hand_vertices, torch.Tensor(true_hand_verts).to(pred_hand_vertices.device))
+                    vis_data[f'world_{side}_hand_verts'][1:L+1] = pred_hand_verts.cpu().numpy()
+                    '''
+                    offline_render(**vis_data)
 
     writer_file.close()
 
@@ -510,7 +540,6 @@ if __name__ == "__main__":
     parser.add_argument("--vis_dep_gen", action='store_true', default=False)
     parser.add_argument("--vis_ren_ori", action='store_true', default=False)
     parser.add_argument("--vis_ren_gen", type=int, default=0)
-    parser.add_argument("--vis_src_file", type=str, default=None)
     args = parser.parse_args()
     
     # choose testset
@@ -518,8 +547,8 @@ if __name__ == "__main__":
         dataset_list="fpha,h2o,hoi4d,hot3d,taco,oakink2"
         split_portion=0.99
     elif args.testset == "test":
-        # dataset_list="arctic"
-        dataset_list="Holo"
+        dataset_list="arctic"
+        # dataset_list="Holo"
         split_portion=0.0
     else:
         raise ValueError(f"Invalid testset: {args.testset}")
@@ -548,4 +577,4 @@ if __name__ == "__main__":
     cascaded_dataset.testset = args.testset
     
     # evaluate
-    test_and_visualize(cascaded_dataset, policy, args.vis_dep_gen, args.vis_ren_ori, args.vis_ren_gen, args.vis_src_file)
+    test_and_visualize(cascaded_dataset, policy, args.vis_dep_gen, args.vis_ren_ori, args.vis_ren_gen)

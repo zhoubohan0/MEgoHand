@@ -48,5 +48,5 @@ CUDA_VISIBLE_DEVICES=$device python -m scripts.test \
   --testset $testset \
   --debug $debug \
   --pretrain_ckpt $pretrain_ckpt \
-  --vis_ren_gen $vis_ren_gen #\
-  # --vis_ren_ori 
+  --vis_ren_gen $vis_ren_gen \
+  --vis_ren_ori 
