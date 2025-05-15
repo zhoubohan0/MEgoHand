@@ -24,22 +24,21 @@ def calculate_average_metrics_for_single_file(
     select_columns=['MPJPE', 'MPJPE-PA', 'MPVE', 'MPVE-PA', 'MWTE', 'MRE'], 
     precision=3, 
     exclude_n=4,
+    include_datasets=None,
     log=False
 ):
     """
-    Compute metrics excluding specified datasets and N largest MPJPE values per dataset
+    Compute metrics for specified datasets and N largest MPJPE values per dataset
     Args:
-        df: pandas DataFrame with metrics
+        metrics_file: path to metrics CSV file
         select_columns: list of metric columns to compute
         precision: decimal precision for rounding
         exclude_n: number of largest MPJPE values to exclude per dataset
+        include_datasets: list of datasets to include (if None, includes all)
+        log: whether to print results
     """
-    df_filtered = preprocess_csv(metrics_file)
-    
-    # Calculate metrics per dataset
-    dataset_metrics = df_filtered.groupby('Dataset').apply(
-        lambda x: x.nsmallest(len(x) - exclude_n, 'MPJPE')[select_columns].mean()
-    ).round(precision)
+    df = pd.read_csv(metrics_file)
+    df_filtered = df[df['Dataset'].isin(include_datasets)] if include_datasets is not None else df
 
     # Calculate overall average
     total_metrics = pd.concat([
@@ -50,13 +49,13 @@ def calculate_average_metrics_for_single_file(
     
     if log:
         print(f'-' * 20 + f'{metrics_file}' + '-' * 20)
-        print(dataset_metrics)
+        print(total_metrics)
         print("\nOverall averages:")
         for metric, value in total_metrics.items():
             print(f"{metric}: {value:.{precision}f}")
         print('\n')
 
-    return dataset_metrics, total_metrics
+    return total_metrics
 
 
 '''
@@ -73,36 +72,26 @@ breakpoint()
 
 
 if __name__ == "__main__":
-    base_dir = '/mnt/vepfs/zbh/MHMP/logs'
     data_mapping = {
         # 'LatentAct': 'baseline-latentact',
         # r'\quad– no concat map': 'baseline-latentact_noconcat',
         # 'LatentAct-Diff': 'baseline-latentact_diff',
         # r'\quad– no concat map': 'baseline-latentact_diff_noconcat',
-        r'\algoabbr-T': 'T_l1_6',
-        r'\algoabbr-ID': 'TI_l1_6',
-        r'\algoabbr-TI': 'TID_l1_6_DA',
-        r'\textbf{\algo(ours)}': 'TID_l1_6_UD_norealdep',
+        r'\algo-T': 'T_l1_6',
+        r'\algo-I': 'TI_l1_6',
+        r'\algo-ID': 'TI_l1_6',
+        r'\algo-TI': 'TID_l1_6_DA',
+        r'\algo~(ours)': 'TID_l1_6_UD_norealdep',
         r'\quad– no depth supervision': 'TID_l1_6_UD_rel',
         r'\quad– depthanythingv2': 'TID_l1_6_UD',
         r'\quad– relative depth': 'ID_l1_6_UD',
     }
-    '''
-    name_mapping = {
-        r'\algoabbr-T': 'MEgo-T',
-        r'\algoabbr-ID': 'MEgo-ID',
-        r'\algoabbr-TI': 'MEgo-TI',
-        r'\textbf{\algo(ours)}': 'MEgoHand',
-        r'\quad– no depth supervision': '– no depth supervision',
-        r'\quad– depthanythingv2': '– depthanythingv2',
-        r'\quad– relative depth': '– relative depth',
-    }
-    '''
     format_inv_mapping = {
-        'MEgo_T': r'\algoabbr-T',
-        'MEgo_ID': r'\algoabbr-ID',
-        'MEgo_TI': r'\algoabbr-TI',
-        'MEgoHand': r'\textbf{\algo(ours)}',
+        'MEgo_T': r'\algo-T',
+        'MEgo_I': r'\algo-I',
+        'MEgo_ID': r'\algo-ID',
+        'MEgo_TI': r'\algo-TI',
+        'MEgoHand': r'\algo~(ours)',
         'MEgoHand_nodepth': r'\quad– no depth supervision',
         'MEgoHand_depthanythingv2': r'\quad– depthanythingv2',
         'MEgoHand_rel': r'\quad– relative depth',
@@ -114,76 +103,77 @@ if __name__ == "__main__":
     }
     
     write_latex_line = lambda row, algo_name: f'& {algo_name} & {row["MPJPE"]:.3f} & {row["MPJPE-PA"]:.3f} & {row["MPVE"]:.3f} & {row["MPVE-PA"]:.3f} & {row["MWTE"]:.3f} & {row["MRE"]:.3f} \\\\'
-    write_color_line = lambda color: f'\\rowcolor{{{color}}}'
+    write_latex_bold_line = lambda row, algo_name: f' & \\textbf{{{algo_name}}} & \\textbf{{{row["MPJPE"]:.3f}}} & \\textbf{{{row["MPJPE-PA"]:.3f}}} & \\textbf{{{row["MPVE"]:.3f}}} & \\textbf{{{row["MPVE-PA"]:.3f}}} & \\textbf{{{row["MWTE"]:.3f}}} & \\textbf{{{row["MRE"]:.3f}}} \\\\'
+    write_color_line = lambda color: f'&\\rowcolor{{{color}}}'
     
-    eval_metrics_list = [
-        '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/ID_l1_6_UD/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_DA/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_rel/eval_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_norealdep/eval_metrics.csv'
-    ]
-    metrics_row = dict()
-    for algo_name in data_mapping:
-        csv_file = os.path.join(base_dir, data_mapping[algo_name], 'test_metrics.csv')
-        dataset_metrics, total_metrics = calculate_average_metrics_for_single_file(csv_file, exclude_n=0)
-        metrics_row[algo_name] = total_metrics
-    
-    latex_line_dict = {k: write_latex_line(metrics_row[format_inv_mapping[k]], format_inv_mapping[k]) for k in format_inv_mapping}
+    # base_dir = '/mnt/vepfs/zbh/MHMP/logs'
+    base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'logs')
+    eval_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'eval_metrics.csv'), include_datasets=['H2O', 'HOI4D', 'HOT3D', 'TACO', 'OAKINK2']) for algo_name in data_mapping}
+    arctic_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'test_metrics.csv'), include_datasets=['ARCTIC']) for algo_name in data_mapping}
+    holo_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'test_metrics.csv'), include_datasets=['HOLO']) for algo_name in data_mapping}
+
+    h2o_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'eval_metrics.csv'), include_datasets=['H2O'], exclude_n=0) for algo_name in data_mapping}
+    hoi4d_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'eval_metrics.csv'), include_datasets=['HOI4D'], exclude_n=0) for algo_name in data_mapping}
+    hot3d_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'eval_metrics.csv'), include_datasets=['HOT3D'], exclude_n=0) for algo_name in data_mapping}
+    taco_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'eval_metrics.csv'), include_datasets=['TACO'], exclude_n=0) for algo_name in data_mapping}
+    oakink2_metrics_row = {algo_name: calculate_average_metrics_for_single_file(os.path.join(base_dir, data_mapping[algo_name], f'eval_metrics.csv'), include_datasets=['OAKINK2'], exclude_n=0) for algo_name in data_mapping}
+    for algo in [r'\algo~(ours)', r'\algo-TI']:
+        print(','.join([str(h2o_metrics_row[algo]['MPJPE']), str(hoi4d_metrics_row[algo]['MPJPE']), str(hot3d_metrics_row[algo]['MPJPE']), str(oakink2_metrics_row[algo]['MPJPE']), str(taco_metrics_row[algo]['MPJPE']), str(arctic_metrics_row[algo]['MPJPE']), str(holo_metrics_row[algo]['MPJPE'])]))
+    breakpoint()
+    write_fn = lambda k: write_latex_line if k != 'MEgoHand' else write_latex_bold_line
+    eval_latex_line = {k: write_fn(k)(eval_metrics_row[format_inv_mapping[k]], format_inv_mapping[k]) for k in format_inv_mapping}
+    arctic_latex_line = {k: write_fn(k)(arctic_metrics_row[format_inv_mapping[k]], format_inv_mapping[k]) for k in format_inv_mapping}
+    holo_latex_line = {k: write_fn(k)(holo_metrics_row[format_inv_mapping[k]], format_inv_mapping[k]) for k in format_inv_mapping}
     color_line_dict = {k: write_color_line(color_mapping[k]) for k in color_mapping}
-    eval_latex_line = r'''
-% ===== Baselines =====
-{baseline_color}
-{LatentAct}
-{baseline_color}
-{LatentAct_noconcat}
-{baseline_color}
-{LatentAct_diff}
-{baseline_color}
-{LatentAct_diff_noconcat}
-
-\addlinespace[0.2em]
-
-% ===== T, ID, TI =====
-{TID_modality_color}
-{MEgo_T}
-{TID_modality_color}
+    
+    """
+    print(r'''
+{MEgoHand}
+{MEgoHand_nodepth}
+{MEgoHand_depthanythingv2}
+{MEgoHand_rel}     
+    '''.format(**eval_latex_line,**color_line_dict))
+    
+    print(r'''
+{MEgoHand}
+{MEgoHand_nodepth}
+{MEgoHand_depthanythingv2}
+{MEgoHand_rel}     
+    '''.format(**arctic_latex_line,**color_line_dict))
+    
+    print(r'''
+{MEgoHand}
+{MEgoHand_nodepth}
+{MEgoHand_depthanythingv2}
+{MEgoHand_rel}     
+    '''.format(**holo_latex_line,**color_line_dict))
+    """
+    
+    
+    
+    print(r'''
+{TID_variant_color}
+{MEgo_T}          
+{TID_variant_color}
+{MEgo_I}
+{TID_variant_color}
 {MEgo_ID}
-{TID_modality_color}
+{TID_variant_color}
 {MEgo_TI}
-
-\addlinespace[0.2em]
-
-% ===== TID variants =====
-
 {TID_variant_color}
 {MEgoHand}
+    '''.format(**arctic_latex_line,**color_line_dict))
+    
+    print(r'''
 {TID_variant_color}
-{MEgoHand_nodepth}
+{MEgo_T}          
 {TID_variant_color}
-{MEgoHand_depthanythingv2}
+{MEgo_I}
 {TID_variant_color}
-{MEgoHand_rel}
-    '''.format(**latex_line_dict, **color_line_dict)
-    print(eval_latex_line)
+{MEgo_ID}
+{TID_variant_color}
+{MEgo_TI}
+{TID_variant_color}
+{MEgoHand}
+    '''.format(**holo_latex_line,**color_line_dict))
     breakpoint()
-    
-    ########################################################################################3
-    
-    
-    test_metrics_list = [
-        '/mnt/vepfs/zbh/MHMP/logs/T_l1_6/test_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/ID_l1_6_UD/test_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TI_l1_6/test_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_DA/test_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD/test_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_rel/test_metrics.csv',
-        '/mnt/vepfs/zbh/MHMP/logs/TID_l1_6_UD_norealdep/test_metrics.csv'
-    ]
-    
-
-        
-    for metrics_file in test_metrics_list:
-        calculate_average_metrics_for_single_file(metrics_file)
