@@ -143,67 +143,164 @@ def depth2color(depth: np.ndarray, cmap='Spectral_r') -> np.ndarray:
     return depth
 
 
-
 def visualize_RGBD(
-        depth: np.ndarray, depth_gt: np.ndarray, rgb: np.ndarray=None, 
-        save_file='', tag='Pred', 
-        way='matplotlib',  # 'cv2', 'matplotlib', 'plotly' 
-        cmap='Spectral_r'  # 'magma', 'magma_r',
+        inputs: dict[str, np.ndarray | torch.Tensor],
+        save_file: str = '', 
+        tag: str = 'Pred', 
+        way: str = 'matplotlib',  # 'cv2', 'matplotlib', 'plotly' 
+        cmap: str = 'Spectral_r',  # 'magma', 'magma_r',
+        mask: np.ndarray | torch.Tensor | None = None,
     ):
     """
     Concatenate depth, depth_gt, and rgb for visualization.
-    depth: metric depth, \in [0,2]
-    depth_gt: metric depth, \in [0,2]
-    rgb: \in [0,255]
+    
+    Args:
+        inputs (dict): Dictionary containing visualization data with possible keys:
+            - depth: metric depth map, numpy array, range [0,2] meters
+            - depth_gt: ground truth depth map, numpy array, range [0,2] meters
+            - rgb: RGB image, numpy array, range [0,255]
+        save_file (str): Path to save the visualization result
+        tag (str): Tag for the predicted depth visualization
+        way (str): Visualization method, one of ['cv2', 'matplotlib', 'plotly']
+        cmap (str): Colormap for depth visualization
+        mask (np.ndarray | torch.Tensor | None): Optional mask for highlighting specific regions
+        
+    Returns:
+        None: Saves visualization to file if save_file is provided
     """
     RGB_tag = 'RGB'
     depth_gt_tag = 'GT'
     if save_file:
         os.makedirs(os.path.dirname(save_file), exist_ok=True)
 
-    if way == 'cv2':
-        depth = depth2color(depth, cmap)
-        depth_gt = depth2color(depth_gt, cmap)
+    # Convert torch tensors to numpy arrays if needed
+    depth = inputs.get('depth', None)
+    depth_gt = inputs.get('depth_gt', None) 
+    rgb = inputs.get('rgb', None)
 
-        H, W = depth.shape[:2]
-        split_region = np.ones((H, 50, 3), dtype=np.uint8) * 255
-        scale = max(H, W) / 500  # Auto-scale factor
-        depth = cv2.putText(depth, tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
-        depth_gt = cv2.putText(depth_gt, depth_gt_tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
-        combined_result = cv2.hconcat([depth, split_region, depth_gt])
+    if rgb is not None and rgb.shape[:2] != depth.shape[:2]:
+        rgb = cv2.resize(rgb, (depth.shape[1], depth.shape[0]))
+    if depth_gt is not None and depth_gt.shape[:2] != depth.shape:
+        depth_gt = resize(torch.Tensor(depth_gt)[None, ...], depth.shape[:2]).squeeze().numpy()
+    # if depth is not None and isinstance(depth, torch.Tensor):
+    #     depth = depth.detach().cpu().numpy()
+    # if depth_gt is not None and isinstance(depth_gt, torch.Tensor):
+    #     depth_gt = depth_gt.detach().cpu().numpy()
+    # if rgb is not None and isinstance(rgb, torch.Tensor):
+    #     rgb = rgb.detach().cpu().numpy()
+    # if mask is not None and isinstance(mask, torch.Tensor):
+    #     mask = mask.detach().cpu().numpy()
+
+    # Validate input ranges
+    # if depth is not None:
+    #     assert depth.min() >= 0 and depth.max() <= 2, f"Depth range should be [0,2], got [{depth.min()}, {depth.max()}]"
+    # if depth_gt is not None:
+    #     assert depth_gt.min() >= 0 and depth_gt.max() <= 2, f"Depth GT range should be [0,2], got [{depth_gt.min()}, {depth_gt.max()}]"
+    # if rgb is not None:
+    #     assert rgb.min() >= 0 and rgb.max() <= 255, f"RGB range should be [0,255], got [{rgb.min()}, {rgb.max()}]"
+
+    if way == 'cv2':
+        # 只处理非None的输入
+        vis_images = []
         if rgb is not None:
-            rgb = cv2.putText(rgb, RGB_tag, (10, int(30*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(1, int(scale)))
-            combined_result = cv2.hconcat([rgb, split_region, combined_result])
-        cv2.imwrite(save_file, combined_result)
+            rgb_vis = rgb.copy()
+            H, W = rgb_vis.shape[:2]
+            scale = max(H, W) / 200  
+            rgb_vis = cv2.putText(rgb_vis, RGB_tag, (10, int(50*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(2, int(scale)))
+            vis_images.append(rgb_vis)
+            
+        if depth is not None:
+            depth_vis = depth2color(depth, cmap)
+            H, W = depth_vis.shape[:2]
+            scale = max(H, W) / 200  
+            depth_vis = cv2.putText(depth_vis, tag, (10, int(50*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(2, int(scale)))
+            vis_images.append(depth_vis)
+            
+        if depth_gt is not None:
+            depth_gt_vis = depth2color(depth_gt, cmap)
+            H, W = depth_gt_vis.shape[:2]
+            scale = max(H, W) / 200  
+            depth_gt_vis = cv2.putText(depth_gt_vis, depth_gt_tag, (10, int(50*scale)), cv2.FONT_HERSHEY_DUPLEX, scale, (255,255,255), max(2, int(scale)))
+            vis_images.append(depth_gt_vis)
+            
+        if len(vis_images) > 0:
+            H = vis_images[0].shape[0]
+            split_region = np.ones((H, 50, 3), dtype=np.uint8) * 255
+            
+            combined_result = vis_images[0]
+            for img in vis_images[1:]:
+                combined_result = cv2.hconcat([combined_result, split_region, img])
+                
+            if save_file:
+                cv2.imwrite(save_file, combined_result)
 
     elif way == 'matplotlib':
+        num_plot = sum(x is not None for x in [rgb, depth, depth_gt])
+        if num_plot == 0:
+            return
+            
         grid_size = 10
-        num_plot = 2 if rgb is None else 3
-        fig, ax = plt.subplots(1, num_plot, figsize=(grid_size * num_plot, grid_size))
-        # rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB) if rgb is not None else None
-        ax[0].imshow(rgb)
-        ax[0].set_title(RGB_tag)
-        ax[0].axis('off')
-        ax[1].imshow(depth, cmap=cmap)
-        ax[1].set_title(tag)
-        ax[1].axis('off')
-        plt.colorbar(ax[1].imshow(depth, cmap=cmap), ax=ax[1], shrink=0.5)
-        ax[2].imshow(depth_gt, cmap=cmap)
-        ax[2].set_title(depth_gt_tag)
-        ax[2].axis('off')
-        plt.colorbar(ax[2].imshow(depth_gt, cmap=cmap), ax=ax[2], shrink=0.5)
-        plt.savefig(save_file, bbox_inches='tight')
+        fig, axes = plt.subplots(1, num_plot, figsize=(grid_size * num_plot, grid_size))
+        if num_plot == 1:
+            axes = [axes]
+            
+        plot_idx = 0
+        if rgb is not None:
+            axes[plot_idx].imshow(rgb)
+            axes[plot_idx].set_title(RGB_tag, fontsize=24, pad=20) 
+            axes[plot_idx].axis('off')
+            plot_idx += 1
+            
+        if depth is not None:
+            im = axes[plot_idx].imshow(depth, cmap=cmap)
+            axes[plot_idx].set_title(tag, fontsize=24, pad=20) 
+            axes[plot_idx].axis('off')
+            plt.colorbar(im, ax=axes[plot_idx], shrink=0.5)
+            plot_idx += 1
+            
+        if depth_gt is not None:
+            im = axes[plot_idx].imshow(depth_gt, cmap=cmap)
+            axes[plot_idx].set_title(depth_gt_tag, fontsize=24, pad=20) 
+            axes[plot_idx].axis('off')
+            plt.colorbar(im, ax=axes[plot_idx], shrink=0.5)
+            
+        if save_file:
+            plt.savefig(save_file, bbox_inches='tight')
         plt.close()
 
     elif way == 'plotly':  # online, 3D
         import plotly.graph_objects as go
-        fig = go.Figure(
-            data=go.Surface(
-                z=depth,  # Depth values as the height
-                colorscale='Viridis',  # Choose a color scale like 'Viridis', 'Cividis', 'Jet', etc.
-                colorbar=dict(title="Depth"),  # Add a colorbar with a label
+        from plotly.subplots import make_subplots
+        
+        num_plots = sum(1 for x in [depth, depth_gt] if x is not None)
+        if num_plots == 0:
+            return
+            
+        fig = make_subplots(rows=1, cols=num_plots,
+                           specs=[[{"type": "surface"}] * num_plots])
+        
+        plot_idx = 1
+        if depth is not None:
+            fig.add_trace(
+                go.Surface(
+                    z=depth,
+                    colorscale='Viridis',
+                    colorbar=dict(title="Depth"),
+                ),
+                row=1, col=plot_idx
             )
-        )
+            plot_idx += 1
+            
+        if depth_gt is not None:
+            fig.add_trace(
+                go.Surface(
+                    z=depth_gt,
+                    colorscale='Viridis',
+                    colorbar=dict(title="Depth GT"),
+                ),
+                row=1, col=plot_idx
+            )
+            
         fig.update_layout(
             title=tag,
             scene=dict(
@@ -211,7 +308,7 @@ def visualize_RGBD(
                 yaxis_title="Y-axis (pixels)",
                 zaxis_title="Depth",
             ),
-            margin=dict(l=0, r=0, t=50, b=0),  # Reduce margins for better fit
+            margin=dict(l=0, r=0, t=50, b=0),
         )
         fig.show()
     else:

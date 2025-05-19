@@ -378,7 +378,7 @@ def test_and_visualize(
                 rgb = np.stack([cv2.resize(img, depth_gt.shape[::-1], interpolation=cv2.INTER_LINEAR) for img in step_data['video'].squeeze()])
                 out_dir = f'vis_depth/{dataset_name}_traj{i_traj:03d}_T{T:03d}'
                 for t in range(T):
-                    visualize_RGBD(depth=depth_pred[t], depth_gt=depth_gt[t], rgb=rgb[t], save_file=os.path.join(out_dir, f'{t:03d}.png'))
+                    visualize_RGBD(dict(depth=depth_pred[t], depth_gt=depth_gt[t], rgb=rgb[t]), save_file=os.path.join(out_dir, f'{t:03d}.png'))
 
             # forward prediction
             pred_mano = decode_mano_para_6d(pred_action)

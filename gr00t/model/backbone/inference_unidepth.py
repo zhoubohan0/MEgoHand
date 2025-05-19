@@ -88,9 +88,10 @@ if __name__ == "__main__":
     depth_gt = clip_depth(depth_gt)
     print("GT depth image:", depth_gt.shape, depth_gt.min(), depth_gt.max())
     print("pred depth image:", depth_pred.shape, depth_pred.min(), depth_pred.max())
-    visualize_RGBD(depth=depth_pred, depth_gt=depth_gt, rgb=rgb, save_file=os.path.join(args.outdir, 'unidepth', os.path.splitext(os.path.basename(args.rgb_path))[0] + '.png'))
-
+    visualize_RGBD(
+        dict(depth=depth_pred, depth_gt=depth_gt, rgb=rgb), 
+        save_file=os.path.join(args.outdir, 'unidepth', os.path.splitext(os.path.basename(args.rgb_path))[0] + '.png')
+    )
     # unproject depth to 3D
     intrinsics = intrinsics[0].cpu().numpy()
     points_3d = unproject_depth_to_3d(depth_pred, intrinsics)
-    breakpoint()

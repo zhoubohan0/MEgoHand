@@ -57,5 +57,5 @@ if __name__ == '__main__':
         depth_gt = clip_depth(depth_gt)
         print("GT depth image:", depth_gt.shape, depth_gt.min(), depth_gt.max())
         
-        visualize_RGBD(depth=depth, depth_gt=depth_gt, rgb=raw_image, save_file=os.path.join(args.outdir, 'depthanythingv2', os.path.splitext(os.path.basename(filename))[0] + '.png'))
+        visualize_RGBD(dict(depth=depth, depth_gt=depth_gt, rgb=raw_image), save_file=os.path.join(args.outdir, 'depthanythingv2', os.path.splitext(os.path.basename(filename))[0] + '.png'))
         
