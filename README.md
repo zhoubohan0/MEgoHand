@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[[Website]]()
+[[Website]](https://zhoubohan0.github.io/MEgoHand/)
 [[arXiv]](https://arxiv.org/abs/2505.16602)
 
 [![Python Version](https://img.shields.io/badge/Python-3.10-blue.svg)]()
@@ -20,7 +20,7 @@ plausible hand-object interactions from egocentric RGB, text, and initial hand p
 - Low-level "cerebellum": a DiT-based policy generates fine-grained trajectories via flow-matching, along with temporal orthogonal filtering to enhance decoding smoothness.
 - Dataset curation: Inverse MANO Retargeting Network and Virtual RGB-D Renderer are designed to unify diverse HOI datasets.
 
-More Visualization can be found on our [[Website]]().
+More Visualization can be found on our [[Website]](https://zhoubohan0.github.io/MEgoHand/).
 
 
 ## Code
