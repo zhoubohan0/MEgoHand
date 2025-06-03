@@ -80,7 +80,7 @@ done
 
 echo "multimodal: $multimodal, dataset_path: $dataset_path, depth_model_path: $depth_model_path, depth_mode: $depth_mode, dataset_list: ${dataset_list[@]}, exp_name: $exp_name, debug: $debug, device: $device, lora_rank: $lora_rank, tune_llm: $tune_llm, tune_visual: $tune_visual, batch_size: $batch_size, resume: $resume"
 
-CUDA_VISIBLE_DEVICES=$device python -m scripts.train \
+CUDA_VISIBLE_DEVICES=$device python -m pdb -m scripts.train \
   --num_gpus $(echo $device | tr -cd ',' | wc -c | awk '{print $1 + 1}') \
   --multimodal "$multimodal" \
   --dataset_path "$dataset_path" \
