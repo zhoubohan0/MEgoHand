@@ -221,34 +221,39 @@ class GR00T_N1(PreTrainedModel):
         best_view_idx = masked_loss.argmin(dim=1)    # [batch_size]
         
         # 3. 计算对齐loss
-        alignment_loss = 0
-        for b in range(self.batch_size):
-            best_view = vit_embeds[b, best_view_idx[b]]  # [token, token_embedding]
-            other_views = vit_embeds[b]  # [multi_view, token, token_embedding]
-            
-            # 归一化
-            best_view = F.normalize(best_view, p=2, dim=1)  # [token, token_embedding]
-            other_views = F.normalize(other_views, p=2, dim=2)  # [multi_view, token, token_embedding]
-            
-            # 计算每个view与最佳view的距离
-            view_loss = 0
-            for v in range(multi_view):
-                
-                # 计算当前view与最佳view的距离
-                pairwise_distances = torch.cdist(
-                    best_view,  # [token, token_embedding]
-                    other_views[v],  # [token, token_embedding]
-                    p=2
-                )  # [token, token]
-                
-                # 找到每个token对应的最小距离
-                min_dist, _ = torch.min(pairwise_distances, dim=1)  # [vision_token_length]
-                view_loss += min_dist.mean()
-            
-            alignment_loss += view_loss / multi_view
+        # 归一化所有embeddings
+        vit_embeds = F.normalize(vit_embeds, p=2, dim=3)  # [batch_size, multi_view, token, token_embedding]
+        
+        # 获取最佳view的embeddings
+        best_views = vit_embeds[torch.arange(self.batch_size), best_view_idx]  # [batch_size, token, token_embedding]
+        
+        # 计算所有view与最佳view的距离
+        # 扩展best_views以匹配其他views的维度
+        best_views_expanded = best_views.unsqueeze(1)  # [batch_size, 1, token, token_embedding]
+        
+        # 计算成对距离
+        pairwise_distances = torch.cdist(
+            best_views_expanded.view(self.batch_size, 1, -1, best_views.size(-1)),  # [batch_size, 1, token, token_embedding]
+            vit_embeds.view(self.batch_size, multi_view, -1, vit_embeds.size(-1)),  # [batch_size, multi_view, token, token_embedding]
+            p=2
+        )  # [batch_size, 1, token, multi_view*token]
+        
+        # 获取token维度
+        token_dim = best_views.size(1)
+        
+        # 重塑回原始维度，明确指定所有维度
+        pairwise_distances = pairwise_distances.view(
+            self.batch_size, 1, token_dim, multi_view, token_dim
+        )  # [batch_size, 1, token, multi_view, token]
+        
+        # 找到每个token对应的最小距离
+        min_dist, _ = torch.min(pairwise_distances, dim=4)  # [batch_size, 1, token, multi_view]
+        
+        # 计算平均距离
+        alignment_loss = min_dist.mean(dim=(1, 2, 3))  # [batch_size]
         
         # 返回平均对齐loss
-        return alignment_loss / self.batch_size
+        return alignment_loss.mean()
         
 
     def forward(
