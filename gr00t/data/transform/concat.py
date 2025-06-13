@@ -93,23 +93,35 @@ class ConcatTransform(InvertibleModalityTransform):
             # ineed contained in the data. If not, then the keys are misspecified
             video_keys = grouped_keys["video"]
             assert self.video_concat_order is not None, f"{self.video_concat_order=}, {video_keys=}"
-            assert all(
-                item in video_keys for item in self.video_concat_order
-            ), f"keys in video_concat_order are misspecified, \n{video_keys=}, \n{self.video_concat_order=}"
+            # assert all(
+            #     item in video_keys for item in self.video_concat_order
+            # ), f"keys in video_concat_order are misspecified, \n{video_keys=}, \n{self.video_concat_order=}"
 
-            # Process each video view
-            unsqueezed_videos = []
-            for video_key in self.video_concat_order:
-                video_data = data.pop(video_key)
-                unsqueezed_video = np.expand_dims(
-                    video_data, axis=-4
-                )  # [..., H, W, C] -> [..., 1, H, W, C]
-                unsqueezed_videos.append(unsqueezed_video)
+            try:
+                # Process each video view
+                unsqueezed_videos = []
+                view_names = []
+                for video_key in self.video_concat_order:
+                    if video_key.split(".")[1] == "allo_view_list":
+                        for k in data.keys():
+                            if "allo_view" in k:
+                                unsqueezed_videos.append(np.expand_dims(data[k], axis=-4))
+                                view_names.append(k)
+                    else:
+                        view_names.append(video_key)
+                        unsqueezed_videos.append(np.expand_dims(data[video_key], axis=-4)) # [..., H, W, C] -> [..., 1, H, W, C]
+            except Exception as e:
+                print(f"Error applying ConcatTransform to data: {e}")
+                raise ValueError(f"Error applying ConcatTransform to data: {e}") from e
+
             # Concatenate along the new axis
             unsqueezed_video = np.concatenate(unsqueezed_videos, axis=-4)  # [..., V, H, W, C]
+            self.video_concat_order = view_names
 
             # Video
             data["video"] = unsqueezed_video
+            for key in view_names:
+                data.pop(key)
 
         # "state"
         if "state" in grouped_keys:

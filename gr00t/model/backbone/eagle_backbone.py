@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os, json
+from typing import Tuple
 import torch
 from torch import nn
 from torch.cuda.amp import autocast
@@ -70,6 +71,7 @@ class DepthEncoder(nn.Module):
         x = (x - self.mean) / self.std
         return rearrange(self.net(x), 'B L D -> B D L')
 
+# self是Eagle2ChatModel的实例，self.language_model是LlamaForCausalLM的实例
 def get_embeddings(
     self,
     reproject_vision: bool,
@@ -79,11 +81,12 @@ def get_embeddings(
     attention_mask=None,
     visual_features=None,
     multimodal='tv'
-) -> torch.LongTensor:
+) -> Tuple[torch.LongTensor, torch.LongTensor]:
     ## get visual embeddings from pixel, if provided then overwrite
     assert pixel_values is not None and self.img_context_token_id is not None
     pixel_values, input_ids, attention_mask = pixel_values.squeeze(1), input_ids.squeeze(1), attention_mask.squeeze(1)  # avoid additional batch dim
     
+    vit_embeds = None
     if 'tv' in multimodal:
         # 1. get language input embeddings
         input_embeds = self.language_model.get_input_embeddings()(input_ids)
@@ -120,7 +123,7 @@ def get_embeddings(
         embeddings = embeddings.reshape(B * N, C)
         embeddings[selected] = embeds_to_scatter
         embeddings = embeddings.reshape(B, N, C)
-    return embeddings
+    return embeddings, vit_embeds
 
 
 class EagleBackbone(nn.Module):
@@ -315,7 +318,8 @@ class EagleBackbone(nn.Module):
             vlm_output["depth_feature_loss"] = self.emb_loss(depth_feature, depth_feature_true)  # mse
         else:
             depth_feature = None
-        embeddings = get_embeddings(
+        # self.model is Eagle2ChatModel
+        embeddings, vit_embeds = get_embeddings(
             self.model,
             self.reproject_vision,
             **{k:v for k,v in vl_input.items() if k in EAGLE_KEYS},
@@ -325,6 +329,7 @@ class EagleBackbone(nn.Module):
         vlm_output.update({
             "backbone_features": self.linear(embeddings),           # [B, T2, hidden_size]
             "backbone_attention_mask": vl_input["attention_mask"],
+            "vit_embeds": vit_embeds,
         })
         
         # return BatchFeature(data=vlm_output) 

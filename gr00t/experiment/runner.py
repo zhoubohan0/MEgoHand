@@ -28,9 +28,23 @@ from gr00t.model.transforms import DefaultDataCollatorGR00T
 from gr00t.utils.experiment import CheckpointFormatCallback, safe_save_model_for_hf_trainer
 
 def safe_collate(batch):
-    # keep key/value both is not None 
-    batch = [b for b in batch if b is not None and all(v is not None for v in b.values())]
-    return default_collate(batch) if batch else None
+    
+    batch_views = []
+    for b in batch:
+        # 获取并移除vlm_outputs
+        vlm_outputs = b.pop("vlm_outputs")
+        # 为每个vlm_output创建一个新的样本
+        for one_view_vlm_outputs in vlm_outputs:
+            # 创建原始样本的副本
+            new_sample = b.copy()
+            # 更新vlm_outputs中的内容
+            new_sample.update(one_view_vlm_outputs)
+            batch_views.append(new_sample)
+
+    batch_views = [b for b in batch_views if b is not None and all(v is not None for v in b.values())]
+    return default_collate(batch_views)
+
+
 
 class TrainRunner:
     def __init__(

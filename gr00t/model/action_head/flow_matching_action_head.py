@@ -344,10 +344,9 @@ class FlowmatchingActionHead(nn.Module):
         action_mask = action_input['action_mask']
         # loss design
         loss = F.l1_loss(pred_actions, velocity, reduction="none") * action_mask# F.smooth_l1_loss
-        loss = loss.sum() / action_mask.sum()
-        output_dict = dict(loss=loss)
+        # output_dict = dict(loss=loss.sum() / action_mask.sum())
         # return BatchFeature(data=output_dict)
-        return output_dict
+        return loss
 
     @torch.no_grad()
     def get_action(self, backbone_output, action_input): #BatchFeature: BatchFeature -> BatchFeature:

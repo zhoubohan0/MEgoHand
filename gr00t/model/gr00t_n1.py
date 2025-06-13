@@ -18,6 +18,7 @@ from typing import Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import tree
 from huggingface_hub.errors import HFValidationError, RepositoryNotFoundError
 from transformers import AutoConfig, AutoModel, PretrainedConfig, PreTrainedModel
@@ -45,6 +46,8 @@ class GR00T_N1Config(PretrainedConfig):
 
     action_dim: int = field(init=False, metadata={"help": "Action dimension."})
     compute_dtype: str = field(default="float32", metadata={"help": "Compute dtype."})
+
+    batch_size: int = field(init=False, metadata={"help": "Batch size."})
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -135,6 +138,7 @@ class GR00T_N1(PreTrainedModel):
         self.action_horizon = config.action_horizon
         self.action_dim = config.action_dim
         self.compute_dtype = config.compute_dtype
+        self.batch_size = config.batch_size
 
     def validate_inputs(self, inputs):
         detected_error = False
@@ -204,6 +208,48 @@ class GR00T_N1(PreTrainedModel):
             error_msg += f"\n{self.action_horizon=}"
             error_msg += f"\n{self.action_dim=}"
             raise ValueError(error_msg)
+    
+    def compute_view_alignment_loss(self, action_head_loss, vit_embeds, action_mask):
+        # 1. 重塑tensor维度
+        multi_view = action_head_loss.size(0) // self.batch_size
+        action_head_loss = action_head_loss.view(self.batch_size, multi_view, -1, action_head_loss.size(-1))
+        action_mask = action_mask.view(self.batch_size, multi_view, -1, action_mask.size(-1))
+        vit_embeds = vit_embeds.view(self.batch_size, multi_view, -1, vit_embeds.size(-1))
+        
+        # 2. 计算每个view的masked loss
+        masked_loss = (action_head_loss * action_mask).sum(dim=(2, 3)) / (action_mask.sum(dim=(2, 3)) + 1e-8)
+        best_view_idx = masked_loss.argmin(dim=1)    # [batch_size]
+        
+        # 3. 计算对齐loss
+        alignment_loss = 0
+        for b in range(self.batch_size):
+            best_view = vit_embeds[b, best_view_idx[b]]  # [token, token_embedding]
+            other_views = vit_embeds[b]  # [multi_view, token, token_embedding]
+            
+            # 归一化
+            best_view = F.normalize(best_view, p=2, dim=1)  # [token, token_embedding]
+            other_views = F.normalize(other_views, p=2, dim=2)  # [multi_view, token, token_embedding]
+            
+            # 计算每个view与最佳view的距离
+            view_loss = 0
+            for v in range(multi_view):
+                
+                # 计算当前view与最佳view的距离
+                pairwise_distances = torch.cdist(
+                    best_view,  # [token, token_embedding]
+                    other_views[v],  # [token, token_embedding]
+                    p=2
+                )  # [token, token]
+                
+                # 找到每个token对应的最小距离
+                min_dist, _ = torch.min(pairwise_distances, dim=1)  # [vision_token_length]
+                view_loss += min_dist.mean()
+            
+            alignment_loss += view_loss / multi_view
+        
+        # 返回平均对齐loss
+        return alignment_loss / self.batch_size
+        
 
     def forward(
         self,
@@ -211,7 +257,13 @@ class GR00T_N1(PreTrainedModel):
     ) -> BatchFeature:
         backbone_inputs, action_inputs = self.prepare_input(inputs)
         backbone_outputs = self.backbone(backbone_inputs)
-        action_head_outputs = self.action_head(backbone_outputs, action_inputs)
+        action_head_loss = self.action_head(backbone_outputs, action_inputs)
+
+        vit_embeds = backbone_outputs['vit_embeds']
+        action_mask = action_inputs['action_mask']
+        
+        view_alignment_loss = self.compute_view_alignment_loss(action_head_loss, vit_embeds, action_mask)
+        action_head_outputs = dict(action_loss=action_head_loss.sum() / action_mask.sum(), view_alignment_loss=view_alignment_loss)
         action_head_outputs.update({k:v for k,v in backbone_outputs.items() if 'loss' in k})
         # self.validate_data(action_head_outputs, backbone_outputs, is_training=True)
         return action_head_outputs

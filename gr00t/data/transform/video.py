@@ -160,15 +160,50 @@ class VideoTransform(ModalityTransform):
         assert (
             transform is not None
         ), "Transform is not set. Please call set_metadata() before calling apply()."
+
+        # Concatenate views
+        # views = [data[key] for key in self.apply_to]
+        views = []
+        view_names = []
+        
+        def process_allo_views(key: str) -> None:
+            if data.get(key) is not None:
+                # 如果存在allo_view_list，将其分解为单独的视图
+                for i, view in enumerate(data[key]):
+                    allo_key = key.replace("allo_view_list", f"allo_view_{i}")
+                    if data.get(allo_key) is None:
+                        data[allo_key] = view
+                    views.append(data[allo_key])
+                    view_names.append(allo_key)
+                data.pop(key)
+                
+            else:
+                # 如果不存在allo_view_list，直接收集所有allo视图
+                for k in data.keys():
+                    if "allo_view" in k:
+                        views.append(data[k])
+                        view_names.append(k)
+        
+        for key in self.apply_to:
+            if key.split(".")[1] == "allo_view_list":
+                process_allo_views(key)
+            else:
+                views.append(data[key])
+                view_names.append(key)
+                
+        assert len(views) == len(view_names), "Number of views and view names must be the same"
+        apply_to_temp = self.apply_to
+        self.apply_to = view_names
+        
         try:
             self.check_input(data)
         except AssertionError as e:
             raise ValueError(
                 f"Input data does not match the expected format for {self.__class__.__name__}: {e}"
             ) from e
+        
+        self.apply_to = apply_to_temp
 
-        # Concatenate views
-        views = [data[key] for key in self.apply_to]
         num_views = len(views)
         is_batched = views[0].ndim == 5
         bs = views[0].shape[0] if is_batched else 1
@@ -212,7 +247,7 @@ class VideoTransform(ModalityTransform):
             views = rearrange(views, "(v b t) c h w -> v b t c h w", v=num_views, b=bs)
         else:
             views = rearrange(views, "(v t) c h w -> v t c h w", v=num_views)
-        for key, view in zip(self.apply_to, views):
+        for key, view in zip(view_names, views):
             data[key] = view
         return data
 

@@ -10849,6 +10849,14 @@
                 "channels": 3,
                 "fps": 20.0
             },
+            "allo_view_list": {
+                "resolution": [
+                    256,
+                    256
+                ],
+                "channels": 3,
+                "fps": 20.0
+            },
             "depthmodel": {
                 "resolution": [
                     256,

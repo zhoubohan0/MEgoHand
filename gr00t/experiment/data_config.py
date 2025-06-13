@@ -698,7 +698,7 @@ class HandMotionDataConfig(BaseDataConfig):
     side = 'right'
     action_horizon = 16
 
-    video_keys = ["video.ego_view"]
+    video_keys = ["video.ego_view", "video.allo_view_list"]
     da_keys = ["video.depthmodel"]
     state_keys = [  # 109
         "state.theta",  # 15 * 6

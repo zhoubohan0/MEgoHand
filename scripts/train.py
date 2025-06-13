@@ -151,12 +151,14 @@ def main(config: Config):
         "depth_model_path": config.depth_model_path,
         "depth_mode": config.depth_mode,
         "multimodal": config.multimodal,
+        "batch_size": config.batch_size,
     })
     model = GR00T_N1(GR00T_N1Config(**model_config),"")
     model.backbone.set_trainable_parameters(tune_visual=config.tune_visual, tune_llm=config.tune_llm)
     model.action_head.set_trainable_parameters(tune_projector=config.tune_projector, tune_diffusion_model=config.tune_diffusion_model)
     model.compute_dtype = "bfloat16"
     model.config.compute_dtype = "bfloat16"
+    
 
     if config.lora_rank > 0:
         model = get_lora_model(

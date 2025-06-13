@@ -156,16 +156,19 @@ class GR00TTransform(InvertibleModalityTransform):
             lang = self.default_instruction
             raise ValueError("Language not found for {self.embodiment_tag.value}")
 
-        prompt = [
+        inputs_list = []
+        for img in images:
+            prompt = [
             {"role": "system", "content": DEFAULT_SYSTEM_MESSAGE},
             {
                 "role": "user",
                 "content": lang,
-                "image": images,
+                "image": [img],
             },
         ]
-        inputs = self.vlm_processor.prepare_input({"prompt": prompt}, max_token_length=120)
-        return inputs  # get image-text token id and attention mask
+            inputs = self.vlm_processor.prepare_input({"prompt": prompt}, max_token_length=120)
+            inputs_list.append(inputs)
+        return inputs_list  # get image-text token id and attention mask
 
     def _prepare_video(self, data: dict):
         """Process, stack, and pad images from data['video']."""
@@ -273,9 +276,10 @@ class GR00TTransform(InvertibleModalityTransform):
             transformed_data["action"] = actions
             transformed_data["action_mask"] = actions_mask
 
-        for k, v in vlm_outputs.items():
-            assert k not in transformed_data, f"Key {k} already exists in transformed_data."
-            transformed_data[k] = v
+        transformed_data["vlm_outputs"] = vlm_outputs
+        # for k, v in vlm_outputs[0].items():
+        #     assert k not in transformed_data, f"Key {k} already exists in transformed_data."
+        #     transformed_data[k] = v
 
         # By default, assume regular robot data with only real action.
         transformed_data["embodiment_id"] = self.get_embodiment_tag()
