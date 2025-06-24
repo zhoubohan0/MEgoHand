@@ -33,7 +33,7 @@ export task="scene_04__A008/seq__ff070467cd91f735acab__2023-04-23-11-28-29"
 export dataset=holo
 export task="R0027-12-GoPro"
 
-python -m pdb -m dataset_visualizer.general_offline_visualizer -d ${dataset} -t ${task}
+QT_XCB_GL_INTEGRATION=xcb_egl LIBGL_ALWAYS_INDIRECT=1 python -m pdb -m dataset_visualizer.general_offline_visualizer -d ${dataset} -t ${task}
 ```
 
 ### Calculate Statistics for CascadedDataset
