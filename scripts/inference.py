@@ -1,4 +1,6 @@
-import os
+import os, time
+from contextlib import contextmanager
+import time
 import torch
 import numpy as np
 from pprint import pprint
@@ -7,6 +9,13 @@ from gr00t.model.policy import MHMPolicy
 from gr00t.experiment.data_config import DATA_CONFIG_MAP
 from gr00t.utils.util import glance_dict
 from mhmp_vis.dataset_loader import *
+
+@contextmanager
+def timeit_context(name="Code block"):
+    start = time.time()
+    yield
+    end = time.time()
+    print(f"{name} took {end - start:.4f} seconds")
 
 # model
 data_config = DATA_CONFIG_MAP["hand_motion"]
@@ -17,8 +26,11 @@ policy = MHMPolicy(
     model_cfg_path='model_config',
     modality_config=modality_config,
     modality_transform=modality_transform,
+    pretrain_ckpt="logs/TID_l1_6_UD_rel/checkpoint-50000"
 )
 # print(policy.model)
+
+
 
 '''
 # dataset
@@ -102,12 +114,12 @@ step_data['annotation.human.action.task_description'] = ['pick the squash from t
 '''
 
 test_dataset_name_list = [
-    # "TACO",       # zbh (135G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/ZBH/dataset/TACO/TACO-overall' -t /mnt/vepfs/zbh/MHMP/datasets/TACO -e "./2D_Segmentation.zip ./README.md"
+    "TACO",       # zbh (135G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/ZBH/dataset/TACO/TACO-overall' -t /mnt/vepfs/zbh/MHMP/datasets/TACO -e "./2D_Segmentation.zip ./README.md"
     # "Arctic",     # zhan_4t (600G) 
     # "oakink2",    # zhan_4t (2.1T) 
     # "H2O",        # zhan_4t (751G) done
-    "hoi4d",      # zhan (178G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/zhan/DATASET/HOI4D' -t /mnt/vepfs/zbh/MHMP/datasets -e "camera_params definitions HOI4D_CAD_Model_for_release HOI4D_release prepare_4Dseg utils README.md task_list.txt"
-    # "fpha",         # zhan (28G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/zhan/DATASET/FPHA.tar.gz'  -t /mnt/vepfs/zbh/MHMP/datasets -e ""
+    # "hoi4d",      # zhan (178G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/zhan/DATASET/HOI4D' -t /mnt/vepfs/zbh/MHMP/datasets -e "camera_params definitions HOI4D_CAD_Model_for_release HOI4D_release prepare_4Dseg utils README.md task_list.txt"
+    # "fpha",       # zhan (28G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p '/media/ps/zhan/DATASET/FPHA.tar.gz'  -t /mnt/vepfs/zbh/MHMP/datasets -e ""
     # "hot3d",      # T9 (247G) bash '/home/ps/Desktop/Multimodal-Hand-Motion-Pretraining/upload.sh' -p /media/ps/T7/HOT3D.tar.gz
     ##------------------------------
     # -----------------------
@@ -124,13 +136,28 @@ test_dataset_name_list = [
 test_dataset_list = []
 for each in test_dataset_name_list:
     dataset_name = each.upper()
-    dataset = eval(f"{dataset_name}Dataset")()
+    dataset = eval(f"{dataset_name}Dataset")('/home/zbh/Desktop/zbh/MEgoHand/TACO/')
     dataset.initialize_data_storage(eval(f"{dataset_name}Storage"), dict(window_size=data_config.action_horizon, side='right'), split=dict(train=1.0))
     test_dataset_list.append(dataset)
 cascaded_dataset = CascadedDataset(test_dataset_list)
 
 # inference a sample
-step_data = cascaded_dataset[0]
-predicted_action = policy.get_action(step_data)
-glance_dict(predicted_action)
-breakpoint()
+for i in range(len(cascaded_dataset)):
+    step_data = cascaded_dataset[i]
+    '''
+    step_data = dict(
+        text='Operate the object',
+        task_name='task_name',
+        ego_rgb_files=['*.jpg'],
+        ego_dep_files=['*.png'],
+        theta_seqs=np.zeros((64, 15*3)),
+        beta_seqs=np.zeros((1, 10)),
+        rot_seqs=np.zeros((64, 3, 3)),
+        trans_seqs=np.zeros((64, 3)),
+        len=64,
+    )
+    '''
+    with timeit_context("Inference"):
+        predicted_action = policy.get_action(step_data)
+    glance_dict(predicted_action)
+    breakpoint()
