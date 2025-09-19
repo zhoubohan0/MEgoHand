@@ -2,8 +2,9 @@
 
 <div align="center">
 
-[[Website]](https://zhoubohan0.github.io/MEgoHand/)
-[[arXiv]](https://arxiv.org/abs/2505.16602)
+[![Arxiv](https://img.shields.io/badge/Paper-red?style=for-the-badge&logo=google-docs&color=cc0000&logoColor=white)](https://arxiv.org/pdf/2505.16602)
+[![Website](https://img.shields.io/badge/Website-blue?style=for-the-badge&logo=react&color=007BFF&logoColor=white)](https://zhoubohan0.github.io/MEg0Hand)
+[![BibTex](https://img.shields.io/badge/Bibtex-green?style=for-the-badge&logo=firebase&color=4F805D&logoColor=white)](https://scholar.googleusercontent.com/scholar.bib?q=info:J6S93qD9OogJ:scholar.google.com)
 
 [![Python Version](https://img.shields.io/badge/Python-3.10-blue.svg)]()
 [![GitHub license](https://img.shields.io/badge/MIT-blue)]()
@@ -18,8 +19,6 @@ plausible hand-object interactions from egocentric RGB, text, and initial hand p
 - High-level "cerebrum": a vision language model (VLM) to infer motion priors from visual-textual context and a monocular depth estimator for object-agnostic spatial reasoning, while
 - Low-level "cerebellum": a DiT-based policy generates fine-grained trajectories via flow-matching, along with temporal orthogonal filtering to enhance decoding smoothness.
 - Dataset curation: Inverse MANO Retargeting Network and Virtual RGB-D Renderer are designed to unify diverse HOI datasets.
-
-More Visualization can be found on our [[Website]](https://zhoubohan0.github.io/MEgoHand/).
 
 
 ## Dataset
@@ -143,6 +142,7 @@ bash bash/test.sh -dataset_list arctic, -split_portion 0.0 -pretrain_ckpt ${ckpt
 ```
 
 ## Citation
+More Visualization can be found on our [[Website]](https://zhoubohan0.github.io/MEg0Hand/).
 If you find our work useful, please consider citing us!
 ```
 @article{zhou2025megohand,
