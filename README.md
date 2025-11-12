@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Arxiv](https://img.shields.io/badge/Paper-red?style=for-the-badge&logo=google-docs&color=cc0000&logoColor=white)](https://arxiv.org/pdf/2505.16602)
+[![Arxiv](https://img.shields.io/badge/Paper-red?style=for-the-badge&logo=google-docs&color=cc0000&logoColor=white)](https://openreview.net/pdf/6869acbb30d7c3a7f8cafe695502f9891b30e804.pdf)
 [![Website](https://img.shields.io/badge/Website-blue?style=for-the-badge&logo=react&color=007BFF&logoColor=white)](https://zhoubohan0.github.io/MEg0Hand)
 [![BibTex](https://img.shields.io/badge/Bibtex-green?style=for-the-badge&logo=firebase&color=4F805D&logoColor=white)](https://scholar.googleusercontent.com/scholar.bib?q=info:J6S93qD9OogJ:scholar.google.com)
 
@@ -100,13 +100,7 @@ test_dataset = load_cascaded_dataset(
     debug=False,
 )
 ```
-> To modify action horizon
-> 
-> gr00t/experiment/data_config.py L693
-> 
-> model_config/config.json action_horizon
 
-## Model
 ## Training
 ```bash
 # MHMP-lora (unused)
